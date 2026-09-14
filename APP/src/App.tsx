@@ -11,7 +11,10 @@ const iconPaths: Record<IconName, string[]> = {
     'M12 12h.01',
     'M16 12h.01',
   ],
-  user: ['M20 21a8 8 0 0 0-16 0', 'a4 4 0 1 0 8 0 4 4 0 0 0-8 0'],
+  user: [
+    'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2', 
+    'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'
+  ],
   x: ['M6 6l12 12', 'M18 6 6 18'],
 };
 
@@ -114,7 +117,7 @@ function App() {
                 className="ml-1 inline-grid size-9 place-items-center rounded-full border border-slate-200 text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
                 href="#profile"
               >
-                <Icon name="user" />
+                <Icon name="user"/>
               </a>
             </div>
 
