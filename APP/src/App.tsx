@@ -107,12 +107,6 @@ function App() {
                 Support
               </a>
               <a
-                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
-                href="#profile"
-              >
-                Profile
-              </a>
-              <a
                 aria-label="Buka profil"
                 className="ml-1 inline-grid size-9 place-items-center rounded-full border border-slate-200 text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
                 href="#profile"
@@ -155,13 +149,6 @@ function App() {
                   onClick={toggleMobileMenu}
                 >
                   <Icon name="message" />
-                  Support
-                </a>
-                <a
-                  className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-                  href="#support"
-                  onClick={toggleMobileMenu}
-                >
                   Support
                 </a>
                 <a
