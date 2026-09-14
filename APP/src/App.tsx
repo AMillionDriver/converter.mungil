@@ -61,7 +61,7 @@ function App() {
         >
           <div className="flex h-16 items-center justify-between gap-4">
             <a
-              aria-label="Flowy Converter beranda"
+              aria-label="Mungil Converter beranda"
               className="flex shrink-0 items-center gap-3"
               href="#beranda"
             >
@@ -83,7 +83,7 @@ function App() {
                 </svg>
               </span>
               <span className="text-base font-bold tracking-tight text-slate-900">
-                Flowy Converter
+                Mungil Converter
               </span>
             </a>
 
@@ -101,10 +101,10 @@ function App() {
             <div className="hidden items-center gap-1 md:flex">
               <a
                 className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
-                href="#ask-ai"
+                href="#support"
               >
                 <Icon name="message" />
-                Ask AI
+                Support
               </a>
               <a
                 className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
@@ -151,11 +151,11 @@ function App() {
               <div className="mt-2 grid gap-1">
                 <a
                   className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-                  href="#ask-ai"
+                  href="#support"
                   onClick={toggleMobileMenu}
                 >
                   <Icon name="message" />
-                  Ask AI
+                  Support
                 </a>
                 <a
                   className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
@@ -188,7 +188,7 @@ function App() {
             className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl"
             id="header-preview-title"
           >
-            Header Flowy Converter siap digunakan.
+            Header Mungil Converter siap digunakan.
           </h1>
           <p className="mt-4 text-base leading-7 text-slate-600">
             Area konverter akan dibangun pada tahap berikutnya.
