@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "vite",
+    "dev:server": "npm run dev --prefix server",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format:check": "prettier --check .",
@@ -12,16 +14,26 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "@jsquash/jpeg": "^1.6.0",
+    "@jsquash/png": "^3.1.1",
+    "@jsquash/webp": "^1.5.0",
     "@tailwindcss/vite": "latest",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
+    "exifr": "^7.1.3",
+    "fflate": "^0.8.3",
+    "idb": "^8.0.3",
+    "pdf-lib": "^1.17.1",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
     "@eslint/js": "^8.57.1",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "concurrently": "^10.0.5",
     "eslint": "^8.57.1",
     "eslint-config-airbnb": "latest",
     "eslint-config-prettier": "latest",

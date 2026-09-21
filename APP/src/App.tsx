@@ -1,4 +1,11 @@
 import { useRef, useState, type DragEvent } from 'react';
+import { useEngineRegistry } from './hooks/useEngineRegistry';
+import { useEngineLoader } from './hooks/useEngineLoader';
+import { useConversion } from './hooks/useConversion';
+import { FileValidator } from './lib/file-validator';
+import { ConversionPipeline } from './lib/conversion-pipeline';
+import { DownloadManager } from './lib/download-manager';
+import { engineRegistry } from './lib/engine-registry';
 
 type IconName =
   | 'chevronDown'
@@ -79,7 +86,86 @@ function Icon({ name, title }: IconProps) {
 
 function Dropzone() {
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [availableFormats, setAvailableFormats] = useState<string[]>([]);
+  const [selectedFormat, setSelectedFormat] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { runConversion, status, progress } = useConversion();
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+
+    // Validation Config
+    const config = {
+      maxSizeMB: 1024, // 1GB
+      allowedMimeTypes: [
+        'application/pdf',
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'video/mp4',
+      ],
+      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'docx', 'mp4'],
+    };
+
+    const result = await FileValidator.validate(file, config);
+    if (!result.isValid) {
+      alert(`Invalid file: ${result.error}`);
+      return;
+    }
+
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+
+    // Discovery: Find supported output formats from registry
+    const formats = engineRegistry.getSupportedOutputFormats(extension);
+
+    if (formats.length === 0) {
+      alert(`No conversion options available for .${extension} files`);
+      return;
+    }
+
+    setUploadedFile(file);
+    setAvailableFormats(formats);
+    setSelectedFormat(formats[0]);
+  };
+
+  const handleConvert = async () => {
+    if (!uploadedFile || !selectedFormat) return;
+
+    try {
+      const extension = uploadedFile.name.split('.').pop()?.toLowerCase() || '';
+
+      // Resolve engine via generic pipeline
+      const engine = await ConversionPipeline.resolveAndLoad(
+        extension,
+        selectedFormat
+      );
+
+      console.log(`Using engine: ${engine.id}`);
+
+      const outputBlob = await runConversion(engine.id, uploadedFile);
+
+      // Trigger automatic download using DownloadManager
+      const filename = DownloadManager.generateFilename(
+        uploadedFile.name,
+        selectedFormat
+      );
+      await DownloadManager.download(outputBlob, {
+        filename,
+        mimeType: `application/${selectedFormat}`,
+      });
+
+      console.log('Conversion complete and download triggered.');
+      setUploadedFile(null); // Reset after success
+    } catch (err) {
+      alert(
+        `Conversion error: ${err instanceof Error ? err.message : 'Unknown error'}`
+      );
+    }
+  };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -94,8 +180,7 @@ function Dropzone() {
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    const files = e.dataTransfer.files;
-    console.log('Dropped files:', files);
+    handleFiles(e.dataTransfer.files);
   };
 
   return (
@@ -113,33 +198,92 @@ function Dropzone() {
         }
       `}
     >
-      <input
-        type="file"
-        ref={fileInputRef}
-        className="hidden"
-        onChange={(e) => console.log('Selected files:', e.target.files)}
-      />
-      <div className="flex flex-col items-center text-center">
-        <div
-          className={`
-          mb-4 rounded-full p-4 transition-colors duration-200
-          ${isDragging ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}
-        `}
-        >
-          <Icon name="upload" title="Upload file" />
+      {!uploadedFile ? (
+        <>
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            onChange={(e) => handleFiles(e.target.files)}
+          />
+          <div className="flex flex-col items-center text-center">
+            <div
+              className={`
+              mb-4 rounded-full p-4 transition-colors duration-200
+              ${isDragging ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}
+            `}
+            >
+              <Icon name="upload" title="Upload file" />
+            </div>
+            <div className="mb-6">
+              <button
+                disabled={status === 'processing'}
+                onClick={() => fileInputRef.current?.click()}
+                className={`rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95 ${
+                  status === 'processing'
+                    ? 'bg-slate-400 cursor-not-allowed'
+                    : 'bg-indigo-600'
+                }`}
+              >
+                {status === 'processing'
+                  ? `Processing ${progress}%...`
+                  : 'Pilih File'}
+              </button>
+              <p className="mt-3 text-sm text-slate-500">
+                atau seret dan lepas file di sini
+              </p>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col items-center text-center py-4">
+          <div className="mb-6">
+            <p className="text-sm font-medium text-slate-900 mb-1">
+              {uploadedFile.name}
+            </p>
+            <p className="text-xs text-slate-500 mb-4">
+              {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
+            </p>
+
+            <div className="flex items-center justify-center gap-3">
+              <label className="text-sm text-slate-600">Konversi ke:</label>
+              <select
+                value={selectedFormat}
+                onChange={(e) => setSelectedFormat(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                {availableFormats.map((format) => (
+                  <option key={format} value={format}>
+                    {format.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setUploadedFile(null)}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+            >
+              Ganti File
+            </button>
+            <button
+              disabled={status === 'processing'}
+              onClick={handleConvert}
+              className={`rounded-lg px-6 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95 ${
+                status === 'processing'
+                  ? 'bg-slate-400 cursor-not-allowed'
+                  : 'bg-indigo-600'
+              }`}
+            >
+              {status === 'processing'
+                ? `Processing ${progress}%...`
+                : 'Konversi Sekarang'}
+            </button>
+          </div>
         </div>
-        <div className="mb-6">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95"
-          >
-            Pilih File
-          </button>
-          <p className="mt-3 text-sm text-slate-500">
-            atau seret dan lepas file di sini
-          </p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -272,6 +416,8 @@ function Footer() {
 
 function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  useEngineRegistry();
+  useEngineLoader();
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen((currentState) => !currentState);
