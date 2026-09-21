@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint . --ext ts,tsx --ignore-pattern mocks --ignore-pattern tests",
+    "lint": "eslint .",
     "format:check": "prettier --check .",
     "format:write": "prettier --write .",
     "preview": "vite preview"

@@ -34,11 +34,6 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
-      'import/extensions': [
-        'error',
-        'ignorePackages',
-        { ts: 'never', tsx: 'never' },
-      ],
     },
   }
 );

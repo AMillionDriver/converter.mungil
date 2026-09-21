@@ -434,15 +434,16 @@ function App() {
                   </a>
                   .
                 </p>
-                {/* Cloudflare Turnstile placeholder */}
+                {/* Cloudflare Turnstile */}
                 <div
-                  aria-hidden="true"
-                  className="rounded-xl border border-slate-200 bg-white p-4 min-h-[100px]"
+                  className="mx-auto flex justify-center"
                   id="turnstile-placeholder"
                 >
-                  <p className="text-center text-sm text-slate-400">
-                    Cloudflare Turnstile widget akan dimuat di sini (Phase 2)
-                  </p>
+                  <div
+                    className="cf-turnstile"
+                    data-sitekey="0x4AAAAAADu46RXWxLxLRnbN"
+                    data-theme="light"
+                  ></div>
                 </div>
               </div>
             </section>
