@@ -125,3 +125,10 @@ Perubahan intinya:
 DOCX diperbaiki ke PK\x03\x04.
 WEBP dan MP4 ditambahkan (dengan offset yang benar).
 Validasi sekarang dicek spesifik sesuai ekstensi file yang diklaim, bukan "cocok dengan sembarang signature yang terdaftar" — versi lama itu juga celah keamanan kecil, karena file .pdf palsu berisi byte JPEG bisa lolos selama cocok dengan magic number apa saja di daftar.
+
+---
+
+Pagi buta aku buka mata
+Sortir kode satu persatu
+Wasm loader aku pasang
+Di shared folder jatuh terasa
