@@ -1,7 +1,7 @@
 export interface LogEntry {
   engineId: string;
   operation: string;
-  status: 'success' | 'fail' | 'warn';
+  status: 'success' | 'fail' | 'warn' | 'loading';
   duration: number;
   inputSize: number;
   outputSize?: number;
@@ -11,7 +11,13 @@ export interface LogEntry {
 export class EngineLogger {
   static log(entry: LogEntry) {
     const statusIcon =
-      entry.status === 'success' ? '✅' : entry.status === 'fail' ? '❌' : '⚠️';
+      entry.status === 'success'
+        ? '✅'
+        : entry.status === 'fail'
+          ? '❌'
+          : entry.status === 'loading'
+            ? '⏳'
+            : '⚠️';
     console.log(
       `[EngineLogger] ${statusIcon} ${entry.engineId} | ${entry.operation} | ${entry.duration}ms | ${entry.inputSize} bytes`
     );
@@ -27,9 +33,6 @@ export class EngineLogger {
   }
 
   static warn(engineId: string, message: string, error?: unknown) {
-    console.warn(
-      `[EngineLogger] ⚠️ ${engineId} WARN: ${message}`,
-      error || ''
-    );
+    console.warn(`[EngineLogger] ⚠️ ${engineId} WARN: ${message}`, error || '');
   }
 }

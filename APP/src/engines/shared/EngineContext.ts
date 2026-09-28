@@ -1,4 +1,8 @@
-import { WasmLoader, type WasmModule, type WasmLoaderConfig } from './wasm-loader';
+import {
+  WasmLoader,
+  type WasmModule,
+  type WasmLoaderConfig,
+} from './wasm-loader';
 import { BlobUtils } from './blob-utils';
 import { EngineLogger, type LogEntry } from './EngineLogger';
 

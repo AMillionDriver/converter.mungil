@@ -11,7 +11,10 @@ export interface FileValidatorConfig {
 
 export class FileValidator {
   // Signature rules per extension, with offsets for formats that need it
-  private static SIGNATURES: Record<string, { offset: number; bytes: number[] }[]> = {
+  private static SIGNATURES: Record<
+    string,
+    { offset: number; bytes: number[] }[]
+  > = {
     pdf: [{ offset: 0, bytes: [0x25, 0x50, 0x44, 0x46] }], // %PDF
     png: [{ offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47] }], // PNG
     jpg: [{ offset: 0, bytes: [0xff, 0xd8, 0xff] }], // JPEG
@@ -69,7 +72,10 @@ export class FileValidator {
     return { isValid: true };
   }
 
-  private static async verifySignature(file: File, extension: string): Promise<boolean> {
+  private static async verifySignature(
+    file: File,
+    extension: string
+  ): Promise<boolean> {
     const rules = this.SIGNATURES[extension];
     if (!rules) return false; // unknown extension
 

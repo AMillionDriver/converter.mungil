@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { EngineLoader, type EngineLoadStatus } from '../lib/engine-loader';
-import { type EngineMetadata } from '../lib/engine-registry';
+import { type EngineMetadata } from '../lib/engine-types';
 
 export function useEngineLoader() {
   const [loadStatuses, setLoadStatuses] = useState<

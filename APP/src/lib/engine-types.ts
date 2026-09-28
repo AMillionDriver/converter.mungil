@@ -15,6 +15,8 @@ export interface EngineMetadata extends EngineCapability {
   checksum: string;
 }
 
+export type EngineRegistry = Record<string, EngineMetadata>;
+
 export type EngineFamily = 'image' | 'video' | 'document' | 'archive';
 
 export interface ConversionOptions {

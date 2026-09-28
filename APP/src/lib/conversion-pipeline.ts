@@ -1,10 +1,18 @@
 import type { ConversionEngine } from './engine-types';
 import { engineRegistry } from './engine-registry';
-import { EngineLoader } from '../engine-loader';
+import { EngineLoader } from './engine-loader';
+
+export interface EngineModule {
+  runConversion: (
+    file: File,
+    options?: Record<string, unknown>,
+    onProgress?: (p: number) => void
+  ) => Promise<Blob>;
+}
 
 // Engine factory — maps engineId to its implementation module
 // Lazy-loaded via dynamic import in the worker thread
-const engineMap: Record<string, () => Promise<{ runConversion: (...args: unknown[]) => Promise<unknown> }>> = {
+const engineMap: Record<string, () => Promise<EngineModule>> = {
   // Image → WebP
   'image:png:webp': () => import('./engines/image-webp'),
   'image:jpg:webp': () => import('./engines/image-webp'),
@@ -64,7 +72,15 @@ export class ConversionPipeline {
    * Returns a direct conversion function for a given engineId.
    * Used by the worker for dynamic dispatch.
    */
-  static getConversionFn(engineId: string): ((file: File, options: Record<string, unknown>, onProgress?: (p: number) => void) => Promise<Blob>) | null {
+  static getConversionFn(
+    engineId: string
+  ):
+    | ((
+        file: File,
+        options: Record<string, unknown>,
+        onProgress?: (p: number) => void
+      ) => Promise<Blob>)
+    | null {
     const loader = engineMap[engineId];
     if (!loader) return null;
     return async (file, options, onProgress) => {

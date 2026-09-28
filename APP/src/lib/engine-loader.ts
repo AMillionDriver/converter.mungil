@@ -1,4 +1,4 @@
-import { type EngineMetadata } from './engine-registry';
+import { type EngineMetadata } from './engine-types';
 import { CacheManager } from './cache-manager';
 import { StorageManager } from './storage-manager';
 

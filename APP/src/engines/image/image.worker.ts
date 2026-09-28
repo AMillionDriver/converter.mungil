@@ -80,7 +80,10 @@ export class ImageEngine {
       };
     } catch (error) {
       // WASM unavailable or failed — fall back to Canvas
-      EngineLogger.warn('image-wasm', `WASM encode failed, falling back to Canvas: ${error}`);
+      EngineLogger.warn(
+        'image-wasm',
+        `WASM encode failed, falling back to Canvas: ${error}`
+      );
       return canvasFallback(file, targetMime, options);
     }
   }
@@ -91,13 +94,16 @@ export class ImageEngine {
 // ---------------------------------------------------------------------------
 
 type JsquashEncode = (
-  input: ImageDataLike,
-  options?: { quality?: number }
-) => Promise<Uint8Array>;
+  input: ImageData,
+  options?: Record<string, unknown>
+) => Promise<ArrayBuffer>;
 
 interface CodecEntry {
   modulePromise: Promise<{ encode: JsquashEncode }>;
-  encode: (input: ImageDataLike, opts?: { quality?: number }) => Promise<Uint8Array>;
+  encode: (
+    input: ImageData,
+    opts?: Record<string, unknown>
+  ) => Promise<ArrayBuffer>;
 }
 
 const CODEC_CACHE: Map<string, CodecEntry> = new Map();
@@ -118,46 +124,39 @@ function resolveCodec(targetMime: string): CodecEntry {
   return entry;
 }
 
-async function importCodecModule(targetMime: string): Promise<{ encode: JsquashEncode }> {
+async function importCodecModule(
+  targetMime: string
+): Promise<{ encode: JsquashEncode }> {
   // @jsquash packages: @jsquash/webp, @jsquash/jpeg, @jsquash/png
   if (targetMime === 'image/webp') {
     const { encode } = await import('@jsquash/webp');
-    return { encode };
+    return { encode: encode as unknown as JsquashEncode };
   }
   if (targetMime === 'image/jpeg') {
     const { encode } = await import('@jsquash/jpeg');
-    return { encode };
+    return { encode: encode as unknown as JsquashEncode };
   }
   if (targetMime === 'image/png') {
     const { encode } = await import('@jsquash/png');
-    return { encode };
+    return { encode: encode as unknown as JsquashEncode };
   }
   throw new Error(`No @jsquash codec for ${targetMime}`);
 }
 
 // ---------------------------------------------------------------------------
-// Source decoding — turn a File into ImageDataLike (RGBA pixels)
+// Source decoding — turn a File into ImageData (RGBA pixels)
 // ---------------------------------------------------------------------------
 
-interface ImageDataLike {
-  width: number;
-  height: number;
-  data: Uint8ClampedArray;
-}
-
-async function decodeSource(file: File): Promise<ImageDataLike> {
-  const bitmap = await createImageBitmap(file, { colorSpaceConversion: 'none' });
+async function decodeSource(file: File): Promise<ImageData> {
+  const bitmap = await createImageBitmap(file, {
+    colorSpaceConversion: 'none',
+  });
   try {
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('OffscreenCanvas 2D context unavailable');
     ctx.drawImage(bitmap, 0, 0);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    return {
-      width: imageData.width,
-      height: imageData.height,
-      data: imageData.data,
-    };
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
   } finally {
     bitmap.close();
   }
@@ -168,10 +167,10 @@ async function decodeSource(file: File): Promise<ImageDataLike> {
 // ---------------------------------------------------------------------------
 
 async function encodeViaJsquash(
-  source: ImageDataLike,
+  source: ImageData,
   codec: CodecEntry,
   options: ImageConvertOptions
-): Promise<Uint8Array> {
+): Promise<ArrayBuffer> {
   const quality = options.quality ?? 0.85;
   return codec.encode(source, { quality: Math.round(quality * 100) });
 }
@@ -213,14 +212,9 @@ async function canvasFallback(
   ctx.drawImage(bitmap, 0, 0, width, height);
   bitmap.close();
 
-  const blob = await new Promise<Blob>((resolve) => {
-    canvas.convertToBlob(
-      {
-        type: targetMime,
-        quality: options.quality ? options.quality : 0.8,
-      },
-      resolve
-    );
+  const blob = await canvas.convertToBlob({
+    type: targetMime,
+    quality: options.quality ? options.quality : 0.8,
   });
 
   return {

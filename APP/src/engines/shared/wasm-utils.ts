@@ -35,8 +35,15 @@ export class WasmEngineError extends Error {
     this.engineId = engineId;
     this.cause = cause;
     // Maintains proper stack trace for where error is thrown (only available on V8)
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, WasmEngineError);
+    const errorConstructor = Error as unknown as {
+      captureStackTrace?: (
+        targetObject: object,
+        constructorOpt?:
+          ((...args: never[]) => unknown) | (new (...args: never[]) => unknown)
+      ) => void;
+    };
+    if (typeof errorConstructor.captureStackTrace === 'function') {
+      errorConstructor.captureStackTrace(this, WasmEngineError);
     }
   }
 }

@@ -139,17 +139,25 @@ export class EngineRegistryManager {
       const result = await response.json();
       if (result.success && result.data.engines) {
         // Merge backend manifest with built-in (backend can override/augment)
-        this.registry = { ...EngineRegistryManager.BUILTIN_REGISTRY, ...result.data.engines };
+        this.registry = {
+          ...EngineRegistryManager.BUILTIN_REGISTRY,
+          ...result.data.engines,
+        };
       } else {
         this.registry = { ...EngineRegistryManager.BUILTIN_REGISTRY };
       }
-    } catch (error) {
-      console.warn('[EngineRegistry] Backend unreachable, using built-in registry only.');
+    } catch {
+      console.warn(
+        '[EngineRegistry] Backend unreachable, using built-in registry only.'
+      );
       this.registry = { ...EngineRegistryManager.BUILTIN_REGISTRY };
     }
   }
 
-  resolveEngine(inputFormat: string, outputFormat: string): EngineMetadata | null {
+  resolveEngine(
+    inputFormat: string,
+    outputFormat: string
+  ): EngineMetadata | null {
     const key = `${this.getCategory(inputFormat)}:${inputFormat}:${outputFormat}`;
     if (this.registry[key]) return this.registry[key];
 

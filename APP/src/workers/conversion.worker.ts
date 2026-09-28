@@ -5,8 +5,16 @@
 
 let isCancelled = false;
 
+interface EngineModule {
+  runConversion: (
+    file: File,
+    options?: Record<string, unknown>,
+    onProgress?: (p: number) => void
+  ) => Promise<Blob>;
+}
+
 // Lazy-load engine modules only when needed.
-const engineModules: Record<string, { runConversion: (...args: unknown[]) => Promise<unknown> }> = {};
+const engineModules: Record<string, EngineModule> = {};
 
 async function loadEngineModule(engineId: string) {
   if (!engineModules[engineId]) {
@@ -60,19 +68,23 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
     case 'CONVERT': {
-      const { engineId, file } = payload;
+      const { engineId, file, options } = payload;
       try {
         isCancelled = false;
         const module = await loadEngineModule(engineId);
 
-        // The engine's runConversion function accepts (file, onProgress)
+        // The engine's runConversion function accepts (file, options, onProgress)
         // and returns a Blob
-        const resultBlob = await module.runConversion(file, (p: number) => {
-          if (isCancelled) {
-            throw new Error('Conversion cancelled');
+        const resultBlob = await module.runConversion(
+          file,
+          options ?? {},
+          (p: number) => {
+            if (isCancelled) {
+              throw new Error('Conversion cancelled');
+            }
+            self.postMessage({ type: 'PROGRESS', payload: { progress: p } });
           }
-          self.postMessage({ type: 'PROGRESS', payload: { progress: p } });
-        });
+        );
 
         if (isCancelled) {
           throw new Error('Conversion cancelled');

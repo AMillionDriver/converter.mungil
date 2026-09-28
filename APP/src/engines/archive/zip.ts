@@ -21,7 +21,8 @@ export class ArchiveEngine {
         entries[file.name] = new Uint8Array(buffer);
       }
       const output = fflate.zipSync(entries, {
-        level: options.compressionLevel as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
+        level: options.compressionLevel as
+          0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
       });
       const blob = new Blob([output], { type: 'application/zip' });
 

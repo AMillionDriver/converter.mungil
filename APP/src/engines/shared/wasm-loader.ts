@@ -21,7 +21,10 @@ const DEFAULT_CONFIG: WasmLoaderConfig = {
 const _modules = new Map<string, WasmModule>();
 const _pending = new Map<string, Promise<WasmModule>>();
 
-function moduleKey(url: string, importObject: WebAssembly.Imports = {}): string {
+function moduleKey(
+  url: string,
+  importObject: WebAssembly.Imports = {}
+): string {
   return `${url}::${JSON.stringify(importObject)}`;
 }
 
@@ -90,7 +93,7 @@ export class WasmLoader {
 
   // --- internal ---
 
-  private static async #loadInternal(
+  static async #loadInternal(
     url: string,
     importObject: WebAssembly.Imports,
     onProgress?: (pct: number) => void
@@ -103,13 +106,16 @@ export class WasmLoader {
     return this.#fetchCompile(url, importObject, onProgress);
   }
 
-  private static async #stream(
+  static async #stream(
     url: string,
     importObject: WebAssembly.Imports,
     onProgress?: (pct: number) => void
   ): Promise<WasmModule> {
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`WASM fetch failed: ${response.status} ${response.statusText}`);
+    if (!response.ok)
+      throw new Error(
+        `WASM fetch failed: ${response.status} ${response.statusText}`
+      );
 
     const total = Number(response.headers.get('content-length')) || 0;
     const reader = response.body?.getReader();
@@ -125,7 +131,8 @@ export class WasmLoader {
         if (done) break;
         chunks.push(value);
         loaded += value.length;
-        if (total > 0) onProgress?.(Math.min(40, Math.floor((loaded / total) * 40)));
+        if (total > 0)
+          onProgress?.(Math.min(40, Math.floor((loaded / total) * 40)));
       }
     } catch {
       // Stream may be interrupted — fall back to fetch
@@ -154,13 +161,16 @@ export class WasmLoader {
     };
   }
 
-  private static async #fetchCompile(
+  static async #fetchCompile(
     url: string,
     importObject: WebAssembly.Imports,
     onProgress?: (pct: number) => void
   ): Promise<WasmModule> {
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`WASM fetch failed: ${response.status} ${response.statusText}`);
+    if (!response.ok)
+      throw new Error(
+        `WASM fetch failed: ${response.status} ${response.statusText}`
+      );
 
     onProgress?.(10);
     const buffer = await response.arrayBuffer();
@@ -189,7 +199,11 @@ export async function callWasm<T = unknown>(
   importObject?: WebAssembly.Imports,
   onProgress?: (pct: number) => void
 ): Promise<T> {
-  const { instance } = await WasmLoader.load(url, importObject ?? {}, onProgress);
+  const { instance } = await WasmLoader.load(
+    url,
+    importObject ?? {},
+    onProgress
+  );
   const fn = instance.exports[funcName];
   if (typeof fn !== 'function') {
     throw new Error(`WASM export "${funcName}" not found`);

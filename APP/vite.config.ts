@@ -9,11 +9,11 @@ export default defineConfig({
       // @jsquash ships .wasm binaries; tell Rollup to treat them as assets
       // so they get emitted alongside the bundle and served with the correct MIME.
       output: {
-        assetFileNames: {
-          // Keep WASM files at the root of the build output for easy fetching
-          ['wasm']: 'wasm/[name][extname]',
-          // Everything else (images, fonts, etc.) grouped by type
-          default: 'assets/[name]-[hash][extname]',
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name && assetInfo.name.endsWith('.wasm')) {
+            return 'wasm/[name][extname]';
+          }
+          return 'assets/[name]-[hash][extname]';
         },
       },
     },

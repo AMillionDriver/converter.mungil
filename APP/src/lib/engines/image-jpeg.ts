@@ -1,9 +1,24 @@
-import { encode, ParseImage } from '@jsquash/jpeg';
+import { encode } from '@jsquash/jpeg';
 import type { ConversionOptions } from '../engine-types';
 
 export const engineId = 'image:png:jpeg';
 
 export const supportedConversions = ['png', 'webp', 'jpg', 'jpeg'];
+
+async function decodeImage(file: File): Promise<ImageData> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Failed to get 2D context');
+    }
+    ctx.drawImage(bitmap, 0, 0);
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } finally {
+    bitmap.close();
+  }
+}
 
 export async function runConversion(
   file: File,
@@ -13,13 +28,8 @@ export async function runConversion(
   onProgress?.(10);
 
   try {
-    const inputBuffer = await file.arrayBuffer();
     onProgress?.(35);
-
-    const decodedImage = ParseImage(new Uint8Array(inputBuffer));
-    if (!decodedImage) {
-      throw new Error('Failed to parse source image — unsupported or corrupt file');
-    }
+    const decodedImage = await decodeImage(file);
     onProgress?.(60);
 
     // JPEG quality: default 85

@@ -13,9 +13,25 @@ export class ExifEngine {
       try {
         // Dynamic import so the module is only loaded when needed
         const exifr = await import('exifr');
-        exif = await exifr.parse(file, { pick: ['Make', 'Model', 'Software', 'DateTimeOriginal', 'GPSLatitude', 'GPSLongitude', 'FNumber', 'ExposureTime', 'ISO'] });
+        exif = await exifr.parse(file, {
+          pick: [
+            'Make',
+            'Model',
+            'Software',
+            'DateTimeOriginal',
+            'GPSLatitude',
+            'GPSLongitude',
+            'FNumber',
+            'ExposureTime',
+            'ISO',
+          ],
+        });
       } catch (err) {
-        EngineLogger.warn('exif-engine', 'exifr parse failed, using fallback', err);
+        EngineLogger.warn(
+          'exif-engine',
+          'exifr parse failed, using fallback',
+          err
+        );
       }
 
       const metadata: ExifResult = {
@@ -114,6 +130,10 @@ declare module '../shared/EngineLogger' {
   }
 }
 
-EngineLogger.warn = function (engineId: string, message: string, error?: unknown) {
+EngineLogger.warn = function (
+  engineId: string,
+  message: string,
+  error?: unknown
+) {
   console.warn(`[EngineLogger] ⚠️ ${engineId} WARN: ${message}`, error || '');
 };
