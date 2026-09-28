@@ -1,35 +1,59 @@
-import type { ConversionEngine, ConversionOptions } from '../engine-types';
-import { engineRegistry } from '../engine-registry';
-import { EngineLoader } from '../engine-loader';
-import { conversionWorker } from '../worker-manager';
+import { encode, ParseImage } from '@jsquash/webp';
+import type { ConversionOptions } from '../engine-types';
 
-export class ImageWebPEngine implements ConversionEngine {
-  id = 'image:webp-converter';
+// Engine metadata is handled by the registry — this module is pure conversion logic.
+// The worker imports this module dynamically and calls runConversion.
 
-  supports(inputFormat: string, outputFormat: string): boolean {
-    return (
-      (inputFormat === 'png' ||
-        inputFormat === 'jpg' ||
-        inputFormat === 'jpeg') &&
-      outputFormat === 'webp'
-    );
-  }
+export const engineId = 'image:png:webp';
 
-  async load(): Promise<void> {
-    const metadata = engineRegistry.getRegistry()['image:png:webp']; // Simplified for example
-    if (!metadata) throw new Error('Engine metadata not found');
+export const supportedConversions = ['png', 'jpg', 'jpeg'];
 
-    await EngineLoader.load(this.id, metadata);
-  }
+/**
+ * Converts a PNG/JPG/JPEG file to WebP using jsquash's WebP codec.
+ * @param file - Input image file (PNG, JPG, or JPEG)
+ * @param options - Optional settings (quality, lossless, etc.)
+ * @param onProgress - Callback for progress updates (0-100)
+ * @returns WebP blob
+ */
+export async function runConversion(
+  file: File,
+  options: ConversionOptions = {},
+  onProgress?: (p: number) => void
+): Promise<Blob> {
+  onProgress?.(10);
 
-  async convert(file: File, options?: ConversionOptions): Promise<Blob> {
-    // Ensure engine is loaded
-    await this.load();
+  try {
+    const inputBuffer = await file.arrayBuffer();
+    onProgress?.(35);
 
-    // In a real implementation, we would send the file to the worker
-    // and the worker would use a WASM library like Squoosh or similar.
-    return await conversionWorker.convert(this.id, file, options ?? {});
+    // Decode source image using jsquash ParseImage (handles PNG/JPG/JPEG)
+    const decodedImage = ParseImage(new Uint8Array(inputBuffer));
+    if (!decodedImage) {
+      throw new Error('Failed to parse source image — unsupported or corrupt file');
+    }
+
+    onProgress?.(60);
+
+    // Encode to WebP with configurable quality
+    const quality = (options.quality as number) ?? 85;
+    const encodeOptions = {
+      quality: Math.max(1, Math.min(100, quality)),
+      lossless: options.lossless === true,
+      method: 6,
+    };
+
+    const webpOutput = await encode(decodedImage, encodeOptions);
+    if (!webpOutput) {
+      throw new Error('WebP encoding failed — the image may be too large or invalid');
+    }
+
+    onProgress?.(95);
+
+    const blob = new Blob([webpOutput], { type: 'image/webp' });
+    onProgress?.(100);
+    return blob;
+  } catch (error) {
+    console.error('[WebP Engine] Conversion failed:', error);
+    throw error;
   }
 }
-
-export const imageWebPEngine = new ImageWebPEngine();

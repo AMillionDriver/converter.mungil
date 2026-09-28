@@ -1,0 +1,180 @@
+// Mock Engines Manifest (Phase 1 — static manifest)
+// This serves as the engine registry manifest served to the frontend.
+// Real production would pull from DB or static JSON built at build time.
+
+import { FastifyRequest } from 'fastify';
+
+export const enginesManifest = {
+  // Image Conversion Engines
+  'image:png:webp': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 12400000,
+    script: '/engines/image/png-webp.js',
+    wasm: '/engines/image/png-webp.wasm',
+    checksum: 'sha256-example-hash-1',
+    capabilities: { maxFileSizeMB: 100, browserMin: 'Chrome 90' },
+  },
+  'image:jpeg:webp': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 13100000,
+    script: '/engines/image/jpg-webp.js',
+    wasm: '/engines/image/jpg-webp.wasm',
+    checksum: 'sha256-example-hash-2',
+    capabilities: { maxFileSizeMB: 100, browserMin: 'Chrome 90' },
+  },
+  'image:jpg:webp': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 13000000,
+    script: '/engines/image/jpg-webp.js',
+    wasm: '/engines/image/jpg-webp.wasm',
+    checksum: 'sha256-example-hash-2b',
+    capabilities: { maxFileSizeMB: 100, browserMin: 'Chrome 90' },
+  },
+  'image:webp:png': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 11000000,
+    script: '/engines/image/webp-png.js',
+    wasm: '/engines/image/webp-png.wasm',
+    checksum: 'sha256-example-hash-3a',
+    capabilities: { maxFileSizeMB: 100, browserMin: 'Chrome 90' },
+  },
+  'image:webp:jpg': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 11200000,
+    script: '/engines/image/webp-jpg.js',
+    wasm: '/engines/image/webp-jpg.wasm',
+    checksum: 'sha256-example-hash-4',
+    capabilities: { maxFileSizeMB: 100, browserMin: 'Chrome 90' },
+  },
+  'image:png:jpg': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 10800000,
+    script: '/engines/image/png-jpg.js',
+    wasm: '/engines/image/png-jpg.wasm',
+    checksum: 'sha256-example-hash-5',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 90' },
+  },
+  'image:jpeg:jpg': {
+    version: '1.0.0',
+    type: 'js',
+    size: 8000000,
+    script: '/engines/image/jpeg-jpg.js',
+    checksum: 'sha256-example-hash-6',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 85' },
+  },
+  'image:jpg:png': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 9000000,
+    script: '/engines/image/jpg-png.js',
+    wasm: '/engines/image/jpg-png.wasm',
+    checksum: 'sha256-example-hash-7',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 90' },
+  },
+
+  // Document Conversion Engines
+  'document:pdf:docx': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 18400000,
+    script: '/engines/document/pdf-docx.js',
+    wasm: '/engines/document/pdf-docx.wasm',
+    checksum: 'sha256-example-hash-8',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 95' },
+  },
+  'document:pdf:txt': {
+    version: '1.0.0',
+    type: 'js',
+    size: 2000000,
+    script: '/engines/document/pdf-txt.js',
+    checksum: 'sha256-example-hash-9',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 80' },
+  },
+  'document:docx:pdf': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 16500000,
+    script: '/engines/document/docx-pdf.js',
+    wasm: '/engines/document/docx-pdf.wasm',
+    checksum: 'sha256-example-hash-10',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 95' },
+  },
+  'document:docx:txt': {
+    version: '1.0.0',
+    type: 'js',
+    size: 1500000,
+    script: '/engines/document/docx-txt.js',
+    checksum: 'sha256-example-hash-11',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 80' },
+  },
+  'document:txt:pdf': {
+    version: '1.0.0',
+    type: 'js',
+    size: 3000000,
+    script: '/engines/document/txt-pdf.js',
+    checksum: 'sha256-example-hash-12',
+    capabilities: { maxFileSizeMB: 100, browserMin: 'Chrome 80' },
+  },
+  'document:txt:docx': {
+    version: '1.0.0',
+    type: 'js',
+    size: 2500000,
+    script: '/engines/document/txt-docx.js',
+    checksum: 'sha256-example-hash-13',
+    capabilities: { maxFileSizeMB: 100, browserMin: 'Chrome 80' },
+  },
+  'document:csv:json': {
+    version: '1.0.0',
+    type: 'js',
+    size: 500000,
+    script: '/engines/document/csv-json.js',
+    checksum: 'sha256-example-hash-14',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 80' },
+  },
+  'document:json:csv': {
+    version: '1.0.0',
+    type: 'js',
+    size: 500000,
+    script: '/engines/document/json-csv.js',
+    checksum: 'sha256-example-hash-15',
+    capabilities: { maxFileSizeMB: 50, browserMin: 'Chrome 80' },
+  },
+
+  // Video Conversion Engines
+  'video:mp4:mp3': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 50000000,
+    script: '/engines/video/mp4-mp3.js',
+    wasm: '/engines/video/mp4-mp3.wasm',
+    checksum: 'sha256-example-hash-16',
+    capabilities: { maxFileSizeMB: 500, browserMin: 'Chrome 95' },
+  },
+  'video:mp4:webm': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 52000000,
+    script: '/engines/video/mp4-webm.js',
+    wasm: '/engines/video/mp4-webm.wasm',
+    checksum: 'sha256-example-hash-17',
+    capabilities: { maxFileSizeMB: 500, browserMin: 'Chrome 95' },
+  },
+  'video:webm:mp4': {
+    version: '1.0.0',
+    type: 'wasm',
+    size: 51000000,
+    script: '/engines/video/webm-mp4.js',
+    wasm: '/engines/video/webm-mp4.wasm',
+    checksum: 'sha256-example-hash-18',
+    capabilities: { maxFileSizeMB: 500, browserMin: 'Chrome 95' },
+  },
+};
+
+export type RequestShape = FastifyRequest;
+void RequestShape; // unused import kept for future type narrowing

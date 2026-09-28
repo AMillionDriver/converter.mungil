@@ -1,22 +1,135 @@
-export interface EngineMetadata {
-  version: string;
-  type: 'wasm' | 'js';
-  size: number;
-  script: string;
-  wasm?: string;
-  checksum: string;
-  capabilities: {
-    maxFileSizeMB: number;
-    browserMin: string;
-  };
-}
-
-export interface EngineRegistry {
-  [key: string]: EngineMetadata;
-}
+import type { EngineMetadata, EngineRegistry } from './engine-types';
 
 export class EngineRegistryManager {
   private registry: EngineRegistry = {};
+
+  // Built-in manifest fallback — uses jsquash codecs already bundled
+  // in node_modules. This allows Phase 1 to function without backend.
+  private static readonly BUILTIN_REGISTRY: EngineRegistry = {
+    // → WebP encoders
+    'image:png:webp': {
+      id: 'image:png:webp',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 893000, // @jsquash/webp actual size
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:jpg:webp': {
+      id: 'image:jpg:webp',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 893000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:jpeg:webp': {
+      id: 'image:jpeg:webp',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 893000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    // → PNG encoders
+    'image:webp:png': {
+      id: 'image:webp:png',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 216000, // @jsquash/png
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:jpg:png': {
+      id: 'image:jpg:png',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 216000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:jpeg:png': {
+      id: 'image:jpeg:png',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 216000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    // → JPEG encoders
+    'image:png:jpeg': {
+      id: 'image:png:jpeg',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 518000, // @jsquash/jpeg
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:webp:jpeg': {
+      id: 'image:webp:jpeg',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 518000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:jpg:jpeg': {
+      id: 'image:jpg:jpeg',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 518000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:jpeg:jpg': {
+      id: 'image:jpeg:jpg',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 518000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+  };
 
   async fetchRegistry(): Promise<void> {
     try {
@@ -25,21 +138,24 @@ export class EngineRegistryManager {
       );
       const result = await response.json();
       if (result.success && result.data.engines) {
-        this.registry = result.data.engines;
+        // Merge backend manifest with built-in (backend can override/augment)
+        this.registry = { ...EngineRegistryManager.BUILTIN_REGISTRY, ...result.data.engines };
+      } else {
+        this.registry = { ...EngineRegistryManager.BUILTIN_REGISTRY };
       }
     } catch (error) {
-      console.error('Failed to fetch engine registry:', error);
-      throw error;
+      console.warn('[EngineRegistry] Backend unreachable, using built-in registry only.');
+      this.registry = { ...EngineRegistryManager.BUILTIN_REGISTRY };
     }
   }
 
-  resolveEngine(
-    inputFormat: string,
-    outputFormat: string
-  ): EngineMetadata | null {
+  resolveEngine(inputFormat: string, outputFormat: string): EngineMetadata | null {
     const key = `${this.getCategory(inputFormat)}:${inputFormat}:${outputFormat}`;
-    // Try specific key first, then a more generic one if needed
-    return this.registry[key] || null;
+    if (this.registry[key]) return this.registry[key];
+
+    // Fallback: try without category prefix
+    const shortKey = `${inputFormat}:${outputFormat}`;
+    return this.registry[shortKey] || null;
   }
 
   getSupportedOutputFormats(inputFormat: string): string[] {
@@ -47,7 +163,9 @@ export class EngineRegistryManager {
     const outputs = new Set<string>();
 
     Object.keys(this.registry).forEach((key) => {
-      const [, input, output] = key.split(':');
+      const parts = key.split(':');
+      const input = parts[1];
+      const output = parts[2];
       if (input === normalizedInput) {
         outputs.add(output);
       }
@@ -70,7 +188,7 @@ export class EngineRegistryManager {
     return categories[format.toLowerCase()] || 'unknown';
   }
 
-  getRegistry() {
+  getRegistry(): EngineRegistry {
     return { ...this.registry };
   }
 }

@@ -56,7 +56,7 @@ export class FFmpegEngine {
       // Read result
       const data = await this.ffmpeg.readFile(outputName);
       const blob = await BlobUtils.arrayBufferToBlob(
-        (data as Uint8Array).buffer,
+        (data as Uint8Array).slice().buffer,
         'application/octet-stream'
       );
 

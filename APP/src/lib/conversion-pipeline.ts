@@ -1,6 +1,24 @@
-import { type ConversionEngine } from './engine-types';
+import type { ConversionEngine } from './engine-types';
 import { engineRegistry } from './engine-registry';
-import { imageWebPEngine } from './engines/image-webp';
+import { EngineLoader } from '../engine-loader';
+
+// Engine factory — maps engineId to its implementation module
+// Lazy-loaded via dynamic import in the worker thread
+const engineMap: Record<string, () => Promise<{ runConversion: (...args: unknown[]) => Promise<unknown> }>> = {
+  // Image → WebP
+  'image:png:webp': () => import('./engines/image-webp'),
+  'image:jpg:webp': () => import('./engines/image-webp'),
+  'image:jpeg:webp': () => import('./engines/image-webp'),
+  // WebP → PNG, JPG/JPEG → PNG
+  'image:webp:png': () => import('./engines/image-png'),
+  'image:jpg:png': () => import('./engines/image-png'),
+  'image:jpeg:png': () => import('./engines/image-png'),
+  // PNG/JPEG → JPEG/JPG
+  'image:png:jpeg': () => import('./engines/image-jpeg'),
+  'image:webp:jpeg': () => import('./engines/image-jpeg'),
+  'image:jpg:jpeg': () => import('./engines/image-jpeg'),
+  'image:jpeg:jpg': () => import('./engines/image-jpeg'),
+};
 
 export class ConversionPipeline {
   private static engines: Map<string, ConversionEngine> = new Map();
@@ -12,36 +30,51 @@ export class ConversionPipeline {
     const category = this.getCategory(inputFormat);
     const engineId = `${category}:${inputFormat}:${outputFormat}`;
 
-    const metadata = engineRegistry.getRegistry()[engineId];
+    const metadata = engineRegistry.resolveEngine(inputFormat, outputFormat);
     if (!metadata) {
       throw new Error(
         `No engine found for conversion from ${inputFormat} to ${outputFormat}`
       );
     }
 
-    // Check if we already have an instance of this engine
+    // If engine instance cached, return it
     if (this.engines.has(engineId)) {
       return this.engines.get(engineId)!;
     }
 
-    // Dynamic instantiation via factory
-    const engine = this.createEngineInstance(engineId);
-    await engine.load();
+    // Create lightweight engine wrapper
+    const engine: ConversionEngine = {
+      id: engineId,
+      load: async () => {
+        await EngineLoader.load(engineId, metadata);
+      },
+      convert: async (file: File, options?: Record<string, unknown>) => {
+        // Delegate to the engine module's runConversion
+        const module = await engineMap[engineId]();
+        return module.runConversion(file, options);
+      },
+    };
 
+    await engine.load();
     this.engines.set(engineId, engine);
     return engine;
   }
 
-  private static createEngineInstance(engineId: string): ConversionEngine {
-    // Factory for engines
-    switch (engineId) {
-      case 'image:png:webp':
-      case 'image:jpg:webp':
-      case 'image:jpeg:webp':
-        return imageWebPEngine;
-      default:
-        throw new Error(`Engine implementation not found for ${engineId}`);
-    }
+  /**
+   * Returns a direct conversion function for a given engineId.
+   * Used by the worker for dynamic dispatch.
+   */
+  static getConversionFn(engineId: string): ((file: File, options: Record<string, unknown>, onProgress?: (p: number) => void) => Promise<Blob>) | null {
+    const loader = engineMap[engineId];
+    if (!loader) return null;
+    return async (file, options, onProgress) => {
+      const mod = await loader();
+      return mod.runConversion(file, options, onProgress);
+    };
+  }
+
+  static getSupportedEngineIds(): string[] {
+    return Object.keys(engineMap);
   }
 
   private static getCategory(format: string): string {

@@ -25,4 +25,11 @@ export class EngineLogger {
       error || ''
     );
   }
+
+  static warn(engineId: string, message: string, error?: unknown) {
+    console.warn(
+      `[EngineLogger] ⚠️ ${engineId} WARN: ${message}`,
+      error || ''
+    );
+  }
 }

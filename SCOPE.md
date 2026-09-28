@@ -1088,3 +1088,729 @@ Checklist
 
 ---
 ---end of phase 2---
+
+--phase 3---
+
+# PHASE 3 — WASM Engine Implementation 🚀
+
+Dokumen ini melanjutkan **Phase 2** (Client-Side Conversion Engine architecture). Fokus Phase 3: **integrasi engine WASM nyata**, ganti mock "Converted Content" dengan file output asli yang bisa di-download.
+
+**Status awal Phase 3:**
+- ✅ Phase 1 (UI/UX) — selesai
+- ✅ Phase 2 (Architecture: Registry, Loader, Cache, Worker) — selesai
+- 🎯 **Phase 3 (Real WASM Engines)** — target
+
+---
+
+## PRINSIP PHASE 3
+
+1. **Satu engine, satu module.** Jangan monolith. Tiap conversion family punya folder sendiri.
+2. **Tidak semua bisa client-side.** Pilih engine yang realistis dulu, fallback ke backend untuk yang rumit.
+3. **Output harus byte-valid.** File hasil harus bisa dibuka di aplikasi aslinya (VLC, Photoshop, MS Word, dsb).
+4. **Ukur, jangan asumsi.** Setiap engine punya bottleneck berbeda — RAM, CPU, GPU, atau network.
+5. **Cache itu asset.** Sekali download engine, harus persist. Jangan download ulang tiap session.
+
+---
+
+## STRATEGI PEMILIHAN ENGINE
+
+Sebelum coding, tentukan prioritas berdasarkan:
+
+| Kriteria | Bobot |
+|---|---|
+| **Demand user** (mana yang paling sering dipakai) | 🔴 High |
+| **Feasibility WASM** (bisa jalan di browser atau tidak) | 🔴 High |
+| **Ukuran engine** (semakin kecil semakin bagus) | 🟡 Medium |
+| **Kualitas output** (hasil harus valid & mirip aslinya) | 🟡 Medium |
+| **Kompleksitas integrasi** | 🟢 Low |
+
+### Tabel Engine Prioritas
+
+| Prioritas | Conversion | Engine Kandidat | Ukuran | Feasible? |
+|---|---|---|---|---|
+| 🥇 P1 | PNG/JPG → WebP | `@jsquash/webp` / `libwebp-wasm` | ~300 KB | ✅ Yes |
+| 🥇 P1 | PNG ↔ JPG | Canvas API native | 0 KB | ✅ Yes |
+| 🥇 P1 | Image resize | Canvas API / `@jsquash/resize` | ~50 KB | ✅ Yes |
+| 🥈 P2 | MP4 → WebM | `ffmpeg.wasm` | ~30 MB | ✅ Yes |
+| 🥈 P2 | MP4 → MP3 | `ffmpeg.wasm` (shared) | 0 KB (reuse) | ✅ Yes |
+| 🥈 P2 | Audio convert (WAV/MP3/OGG) | `ffmpeg.wasm` (shared) | 0 KB (reuse) | ✅ Yes |
+| 🥉 P3 | PDF merge/split | `pdf-lib` | ~500 KB | ✅ Yes |
+| 🥉 P3 | Image → PDF | `pdf-lib` + Canvas | ~500 KB | ✅ Yes |
+| 🥉 P3 | EXIF read/write | `exifr` + `piexifjs` | ~200 KB | ✅ Yes |
+| 🏅 P4 | PDF → DOCX | Tidak ada yang bagus | — | ❌ Backend |
+| 🏅 P4 | DOCX → PDF | Tidak ada yang bagus | — | ❌ Backend |
+| 🏅 P4 | HTML → PDF | `pdf-lib` (limited) | — | ⚠️ Partial |
+| 🏅 P4 | Archive (zip/tar) | `fflate` | ~30 KB | ✅ Yes |
+
+**Filosofi:** 80% demand user bisa di-cover dengan **5 engine utama**. Sisanya fallback backend.
+
+---
+
+## CHAPTER 3.1 · Engine Foundation & Shared Infrastructure
+
+**Tujuan:** setup infrastruktur dasar sebelum integrasi engine spesifik.
+
+### Pekerjaan
+- Install `ffmpeg.wasm` core package (`@ffmpeg/ffmpeg`, `@ffmpeg/core`)
+- Install engine library ringan (`@jsquash/webp`, `@jsquash/jpeg`, `@jsquash/png`, `pdf-lib`, `fflate`, `exifr`)
+- Setup `SharedArrayBuffer` & `crossOriginIsolated`
+- Konfigurasi Vite headers (COOP/COEP) untuk dev & build
+- Setup `EngineContext` — dependency injection untuk semua engine
+- Setup `EngineLogger` — log per engine (success, fail, waktu, ukuran output)
+- Setup folder structure
+
+### Struktur Folder
+```
+src/
+├── engines/
+│   ├── shared/
+│   │   ├── EngineContext.ts
+│   │   ├── EngineLogger.ts
+│   │   ├── blob-utils.ts
+│   │   └── wasm-loader.ts
+│   ├── image/
+│   │   ├── image.worker.ts
+│   │   ├── png-webp.ts
+│   │   ├── jpg-webp.ts
+│   │   └── resize.ts
+│   ├── video/
+│   │   ├── video.worker.ts
+│   │   └── ffmpeg-wrapper.ts
+│   ├── document/
+│   │   ├── document.worker.ts
+│   │   └── pdf-merge.ts
+│   └── archive/
+│       └── zip.ts
+```
+
+### Vite Config — COOP/COEP
+```ts
+// vite.config.ts
+export default defineConfig({
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+  },
+});
+```
+
+### Selesai ketika
+- ✅ Satu test worker (misal resize image) jalan via `postMessage`
+- ✅ SharedArrayBuffer tersedia (`self.crossOriginIsolated === true`)
+- ✅ Log engine muncul di console
+
+---
+
+## CHAPTER 3.2 · Image Engine (P1 — MVP)
+
+**Tujuan:** fungsionalitas dasar conversion image client-side, tanpa backend.
+
+### Pekerjaan
+- Integrasi `@jsquash/webp` untuk encode PNG/JPG → WebP
+- Integrasi `@jsquash/jpeg` untuk decode/encode JPEG
+- Integrasi `@jsquash/png` untuk decode/encode PNG
+- Native Canvas API untuk resize & format konversi tanpa WASM
+- Worker wrapper (`image.worker.ts`) — accept File, return Blob
+- Progress: 0% (load engine) → 50% (decode) → 90% (encode) → 100%
+- Error handling per format
+
+### Supported Conversions
+| Input | Output | Engine | Note |
+|---|---|---|---|
+| PNG | WebP | `@jsquash/webp` | Lossy/Lossless option |
+| JPG | WebP | `@jsquash/webp` | Quality 0-100 |
+| PNG | JPG | Canvas API | Background fill putih |
+| JPG | PNG | Canvas API | Lossless |
+| WebP | PNG | `@jsquash/png` | Lossless |
+| PNG/JPG | PNG/JPG (resize) | Canvas API | Preserve aspect ratio option |
+
+### Interface
+```ts
+interface ImageConvertOptions {
+  quality?: number;        // 1-100, default 80
+  maxWidth?: number;       // resize bound
+  maxHeight?: number;
+  preserveAspect?: boolean; // default true
+  background?: string;     // hex, default #FFFFFF for JPG output
+}
+```
+
+### Output
+```ts
+{
+  blob: Blob,
+  mime: 'image/webp' | 'image/jpeg' | 'image/png',
+  filename: 'photo.webp',
+  originalSize: 1234567,
+  convertedSize: 234567,
+  compressionRatio: 0.19,
+}
+```
+
+### Selesai ketika
+- ✅ User upload PNG 5 MB → dapat WebP 500 KB yang valid (bisa dibuka di browser)
+- ✅ Resize 4000×3000 → 1920×1440 dengan aspect ratio benar
+- ✅ Batch 10 file jalan tanpa memory leak
+- ✅ 0 request ke backend
+
+---
+
+## CHAPTER 3.3 · FFmpeg.wasm Engine (P2 — Video & Audio)
+
+**Tujuan:** video/audio conversion di browser pakai FFmpeg WASM.
+
+### Pekerjaan
+- Load `@ffmpeg/ffmpeg` + `@ffmpeg/core` (~30 MB) via EngineLoader
+- Simpan di Cache Storage — sekali download, reuse selamanya
+- Wrapper `ffmpeg-wrapper.ts` dengan API promise-based
+- Worker `video.worker.ts` — handle FFmpeg instance
+- Progress listener — `ffmpeg.on('progress', ...)`
+- Memory management: `FS.unlink()` untuk file di MEMFS FFmpeg
+
+### Supported Conversions
+| Input | Output | Note |
+|---|---|---|
+| MP4 | WebM | VP9 / VP8 encode |
+| MP4 | MP3 | Extract audio |
+| MP4 | GIF | Short clip, max 10s |
+| WebM | MP4 | H.264 (butuh encoder) |
+| MOV | MP4 | Remux / transcode |
+| MKV | MP4 | Remux |
+| WAV | MP3 | Audio convert |
+| MP3 | OGG | Audio convert |
+| M4A | MP3 | Audio convert |
+
+### Wrapper Design
+```ts
+class FFmpegEngine {
+  private ffmpeg: FFmpeg;
+  private loaded: boolean = false;
+
+  async load(onProgress?: (p: number) => void): Promise<void>;
+
+  async convert(
+    file: File,
+    args: string[],
+    outputName: string,
+    onProgress?: (p: number) => void
+  ): Promise<Blob>;
+
+  async cleanup(): Promise<void>;
+}
+```
+
+### Contoh Command
+```ts
+// MP4 → WebM
+['-i', 'input.mp4', '-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0', 'output.webm']
+
+// MP4 → MP3
+['-i', 'input.mp4', '-vn', '-acodec', 'libmp3lame', '-q:a', '2', 'output.mp3']
+
+// MP4 → GIF (5 detik mulai 00:00)
+['-i', 'input.mp4', '-t', '5', '-vf', 'fps=15,scale=480:-1', 'output.gif']
+```
+
+### Selesai ketika
+- ✅ MP4 50 MB → WebM 20 MB dalam < 60 detik di laptop mid-range
+- ✅ Progress bar update real-time
+- ✅ Cancel works (terminate worker + FFmpeg exit)
+- ✅ Memory tidak naik terus setelah 5 conversion berturut-turut
+
+### Catatan Penting
+- ⚠️ **FFmpeg.wasm butuh SharedArrayBuffer** → wajib COOP/COEP header
+- ⚠️ **iOS Safari ~1 GB limit** — fallback ke backend untuk file > 500 MB
+- ⚠️ **Single-threaded** by default — untuk multi-thread butuh `@ffmpeg/core-mt` (lebih besar)
+- ⚠️ **Mobile performance** jauh lebih lambat — deteksi device class dulu
+
+---
+
+## CHAPTER 3.4 · PDF Engine (P3)
+
+**Tujuan:** operasi PDF client-side (merge, split, rotate, image → PDF).
+
+### Pekerjaan
+- Integrasi `pdf-lib` (~500 KB minified)
+- Worker `document.worker.ts`
+- Support basic PDF operations (NO text extraction/OCR)
+
+### Supported Operations
+| Operation | Engine | Note |
+|---|---|---|
+| Image → PDF | `pdf-lib` | PNG/JPG → single-page PDF |
+| Multiple Image → PDF | `pdf-lib` | Batch → multi-page |
+| Merge PDF | `pdf-lib` | Combine 2+ PDF files |
+| Split PDF | `pdf-lib` | Extract page range |
+| Rotate PDF | `pdf-lib` | Rotate 90/180/270 |
+| Reorder Pages | `pdf-lib` | UI drag-drop |
+
+### Interface
+```ts
+interface PdfOperation {
+  type: 'merge' | 'split' | 'rotate' | 'image-to-pdf';
+  files: File[];
+  options: {
+    pages?: number[];      // for split
+    angle?: 90 | 180 | 270; // for rotate
+    pageSize?: 'A4' | 'Letter' | 'auto';
+  };
+}
+```
+
+### Selesai ketika
+- ✅ Merge 3 PDF jadi 1, total 20 MB dalam < 3 detik
+- ✅ Split PDF halaman 3-7
+- ✅ Image → PDF dengan layout yang rapi
+- ✅ Output bisa dibuka di Adobe Reader / browser
+
+---
+
+## CHAPTER 3.5 · Archive Engine (P4)
+
+**Tujuan:** bikin & extract archive ringan di browser.
+
+### Pekerjaan
+- Integrasi `fflate` (~30 KB) — lebih kecil dari JSZip
+- Worker `archive.worker.ts`
+- Progress per file
+
+### Supported
+| Operation | Note |
+|---|---|
+| Files → ZIP | Compress multi-file |
+| ZIP → Extract | Extract archive |
+| Files → TAR | Alternative format |
+
+### Selesai ketika
+- ✅ Zip 10 file jadi 1 (size ~50% dari total)
+- ✅ Extract ZIP → dapat file asli
+- ✅ Progress: file 3/10, 45%
+
+---
+
+## CHAPTER 3.6 · Metadata / EXIF Engine (P5)
+
+**Tujuan:** read/write/delete metadata image.
+
+### Pekerjaan
+- Integrasi `exifr` (read) + `piexifjs` (write) atau `exifr` saja untuk read-only
+- UI panel untuk edit metadata (kamera, tanggal, GPS, dll)
+
+### Supported
+| Operation | Note |
+|---|---|
+| Read EXIF | Camera, date, GPS, ISO, aperture |
+| Strip EXIF | Hapus semua metadata (privacy) |
+| Edit basic | Kamera model, date, copyright |
+
+### Selesai ketika
+- ✅ Upload JPG → tampil EXIF lengkap
+- ✅ Strip EXIF → file baru tanpa metadata
+- ✅ Verify dengan `exiftool` command line
+
+---
+
+## CHAPTER 3.7 · Real Output & Download Flow
+
+**Tujuan:** ganti mock "Converted Content" dengan file output asli.
+
+### Pekerjaan
+- Ganti mock di `ConversionResult.tsx` dengan Blob dari worker
+- Implement `ObjectURL` lifecycle:
+  ```ts
+  const url = URL.createObjectURL(blob);
+  // ... gunakan untuk download
+  URL.revokeObjectURL(url); // cleanup
+  ```
+- Download button → trigger `a.download` attribute
+- Multiple output → download as ZIP
+- Preview inline (image, video) — pakai `Blob` → object URL
+- Cleanup on unmount
+
+### UI States
+| State | UI |
+|---|---|
+| `idle` | Dropzone |
+| `loading-engine` | "Preparing converter..." + progress |
+| `converting` | Progress bar + file name |
+| `done` | Preview + Download button |
+| `error` | Error message + Retry |
+| `cancelled` | Back to idle |
+
+### Selesai ketika
+- ✅ Klik "Convert" → dapat file asli, bisa buka di app eksternal
+- ✅ Object URL di-revoke setelah download
+- ✅ Batch output → ZIP download
+
+---
+
+## CHAPTER 3.8 · Engine-Specific Error Handling
+
+**Tujuan:** error per engine punya penanganan berbeda.
+
+### Error Categories
+| Category | Contoh | Handling |
+|---|---|---|
+| **Unsupported format** | User upload `.psd` ke engine image | Toast: "Format tidak didukung" |
+| **Corrupt file** | PDF rusak / MP4 broken | Toast: "File rusak atau tidak valid" |
+| **Out of memory** | Video 2 GB di device 2 GB RAM | Fallback ke backend (atau reject) |
+| **WASM load fail** | Network error saat download engine | Retry dengan exponential backoff |
+| **Conversion timeout** | File > 500 MB | Cancel + rekomendasi backend |
+| **Browser not supported** | Safari < 15 tidak support WASM | Show compat warning |
+| **Engine version mismatch** | Cached engine lama | Auto-update + clear cache |
+
+### Selesai ketika
+- ✅ Error message informatif, bukan "Something went wrong"
+- ✅ Semua error code terdokumentasi
+- ✅ Retry tidak duplicate job
+
+---
+
+## CHAPTER 3.9 · Capability Detection
+
+**Tujuan:** deteksi apakah device user bisa jalanin engine tertentu.
+
+### Pekerjaan
+- Cek `WebAssembly` support
+- Cek `SharedArrayBuffer` support (untuk FFmpeg)
+- Cek `navigator.hardwareConcurrency` (min 2 core)
+- Cek `navigator.deviceMemory` (min 4 GB)
+- Cek **Web Worker** support
+- Cek **Cache Storage API** support
+- Cek **IndexedDB** support
+- Detect iOS/Android (special handling)
+- Detect battery status (jangan convert kalau low battery)
+
+### Capability Matrix
+```ts
+{
+  wasm: true,
+  sab: false,           // → fallback untuk FFmpeg
+  worker: true,
+  cache: true,
+  indexedDB: true,
+  memory: 4,            // GB
+  cores: 4,
+  isMobile: true,
+  isIOS: false,
+  tier: 'medium',       // 'low' | 'medium' | 'high'
+}
+```
+
+### Behavior
+| Tier | Image | Video | PDF |
+|---|---|---|---|
+| **High** (desktop) | ✅ All | ✅ All | ✅ All |
+| **Medium** (mid mobile) | ✅ All | ⚠️ < 50 MB | ✅ All |
+| **Low** (low mobile) | ✅ Basic | ❌ Backend | ✅ Basic |
+
+### Selesai ketika
+- ✅ Device low-end tidak crash saat buka app
+- ✅ UI menyesuaikan (fitur disabled kalau tidak capable)
+
+---
+
+## CHAPTER 3.10 · Performance Profiling
+
+**Tujuan:** ukur engine performance secara konsisten.
+
+### Metrik
+| Metrik | Target | Cara Ukur |
+|---|---|---|
+| **Engine load time** | < 5 detik | `performance.now()` sebelum-sesudah |
+| **Conversion time** | < 30 detik (10 MB) | Timer per engine |
+| **Memory peak** | < 500 MB | `performance.memory` (Chrome) |
+| **Cache hit rate** | > 90% | Log tiap request |
+| **Success rate** | > 95% | Log per conversion |
+| **Output size ratio** | Ideal < 80% | `outputSize / inputSize` |
+
+### Selesai ketika
+- ✅ Ada dashboard internal atau log file buat analisa
+- ✅ Threshold alert jika engine di luar spec
+
+---
+
+## CHAPTER 3.11 · Cross-Browser Testing
+
+**Tujuan:** verify engine jalan di semua target browser.
+
+### Browser Matrix
+| Browser | Version | Priority |
+|---|---|---|
+| Chrome Desktop | Latest | 🥇 P1 |
+| Chrome Android | Latest | 🥇 P1 |
+| Firefox Desktop | Latest | 🥈 P2 |
+| Safari Desktop | 16+ | 🥈 P2 |
+| Safari iOS | 16+ | 🥈 P2 |
+| Edge | Latest | 🥉 P3 |
+| Brave | Latest | 🥉 P3 |
+
+### Test Case per Browser
+- [ ] Upload image → convert
+- [ ] Upload video → convert
+- [ ] Engine cache persists after refresh
+- [ ] Engine cache persists after browser restart
+- [ ] Worker tidak freeze UI
+- [ ] Download file valid
+
+### Selesai ketika
+- ✅ 95% test cases pass di Chrome
+- ✅ Compat warning di browser yang tidak support
+
+---
+
+## CHAPTER 3.12 · Engine Versioning & Updates
+
+**Tujuan:** bisa update engine tanpa rusakin cache user lama.
+
+### Pekerjaan
+- Registry punya field `version` (semver)
+- Cache key include version: `engine:png-webp:v1.2.0`
+- Auto-invalidate kalau versi di registry > versi cached
+- Force refresh button (manual)
+- Migration path kalau engine deprecated
+
+### Selesai ketika
+- ✅ Update engine → user dapet versi baru otomatis
+- ✅ Tidak ada konflik antar versi
+
+---
+
+## CHAPTER 3.13 · Security Hardening
+
+**Tujuan:** audit keamanan engine WASM.
+
+### Pekerjaan
+- **Subresource Integrity (SRI)** untuk engine WASM — hash check
+- **Content Security Policy** — block inline script
+- **Sandbox worker** — tidak akses DOM, tidak akses network sembarangan
+- **Input sanitization** — filename, MIME type, magic byte
+- **DoS protection** — limit file size, limit concurrent conversion
+- **ZIP bomb protection** — limit extract size
+- **Engine tampering detection** — hash compare
+
+### Selesai ketika
+- ✅ Semua engine punya checksum
+- ✅ CSP aktif di production
+- ✅ No XSS via filename
+
+---
+
+## CHAPTER 3.14 · Observability & Analytics
+
+**Tujuan:** data untuk improve product, bukan buat stalk user.
+
+### Yang Dikumpulkan
+```ts
+{
+  engineId: 'png-webp',
+  engineVersion: '1.2.0',
+  success: true,
+  durationMs: 1873,
+  inputSize: 5234567,
+  outputSize: 789123,
+  ratio: 0.15,
+  browser: 'Chrome',
+  os: 'Windows',
+  deviceTier: 'high',
+  cacheHit: true,
+  error?: null,
+}
+```
+
+### Yang TIDAK Dikumpulkan
+- ❌ File user
+- ❌ Filename original
+- ❌ EXIF content
+- ❌ IP address
+- ❌ Conversion output
+
+### Selesai ketika
+- ✅ Dashboard aggregate: engine popular, success rate, avg time
+- ✅ Zero PII in logs
+
+---
+
+## CHAPTER 3.15 · Testing Strategy
+
+### Test Levels
+| Level | Coverage |
+|---|---|
+| **Unit** | Setiap engine function (input → output valid) |
+| **Integration** | Worker ↔ Main thread protocol |
+| **Browser** | Cross-browser matrix |
+| **Performance** | Regresi setelah update |
+| **Security** | Fuzzing input file |
+| **Regression** | Setiap release |
+
+### Test Files
+```
+fixtures/
+├── images/
+│   ├── tiny.png         (1 KB)
+│   ├── small.jpg        (500 KB)
+│   ├── medium.png       (5 MB)
+│   ├── large.jpg        (20 MB)
+│   └── corrupt.jpg      (invalid)
+├── videos/
+│   ├── short.mp4        (5 MB, 10s)
+│   ├── medium.mp4       (50 MB, 60s)
+│   └── large.mp4        (500 MB, 10min)
+├── pdfs/
+│   ├── single.pdf       (100 KB)
+│   ├── multi.pdf        (5 MB, 20 pages)
+│   └── corrupt.pdf
+└── archives/
+    ├── small.zip        (1 MB)
+    └── bomb.zip         (malicious)
+```
+
+### Selesai ketika
+- ✅ Test coverage > 70%
+- ✅ Semua fixture valid
+
+---
+
+## CHAPTER 3.16 · Documentation
+
+**Tujuan:** dokumentasi untuk kontributor & user.
+
+### Pekerjaan
+- `README.md` — setup dev, cara build, cara test
+- `CONTRIBUTING.md` — cara nambah engine baru
+- `docs/engine-template.md` — template engine baru
+- `docs/architecture.md` — diagram alur conversion
+- JSDoc untuk semua public API
+
+### Selesai ketika
+- ✅ Dev baru bisa nambah engine dalam < 1 jam
+- ✅ Docs up-to-date di setiap release
+
+---
+
+## CHAPTER 3.17 · Deployment & Rollout
+
+**Tujuan:** release Phase 3 ke production.
+
+### Rollout Plan
+| Stage | Audience | Metrics |
+|---|---|---|
+| **Stage 1** | Internal (lu sendiri) | Smoke test |
+| **Stage 2** | 5% user | Error rate, latency |
+| **Stage 3** | 25% user | Success rate, conversion count |
+| **Stage 4** | 100% user | Full rollout |
+
+### Checklist Production
+- [ ] HTTPS only
+- [ ] CSP header
+- [ ] Security headers (COOP/COEP)
+- [ ] Turnstile aktif
+- [ ] Rate limiting
+- [ ] Feature flags
+- [ ] Monitoring (Sentry / LogRocket)
+- [ ] Rollback plan
+- [ ] Documentation live
+- [ ] Status page (kalau ada)
+
+### Selesai ketika
+- ✅ Phase 3 stable di production 1 minggu tanpa critical bug
+- ✅ Rollback procedure tested
+
+---
+
+## MILESTONE PHASE 3
+
+| Milestone | Target | Deliverable |
+|---|---|---|
+| **M1: Image Engine** | Week 1 | PNG/JPG ↔ WebP, resize |
+| **M2: Real Output** | Week 2 | File asli bisa di-download |
+| **M3: FFmpeg Engine** | Week 3-4 | MP4 → WebM, MP4 → MP3 |
+| **M4: PDF Engine** | Week 5 | Merge, split, image → PDF |
+| **M5: Polish** | Week 6 | Error handling, UI, capability detection |
+| **M6: Beta Release** | Week 7 | Public beta |
+| **M7: GA** | Week 8 | General availability |
+
+---
+
+## PRIORITAS IMPLEMENTASI (Urutan Coding)
+
+**Week 1 — Image basics:**
+1. Setup `EngineContext` + Worker + Logger
+2. `png-webp` engine — proof of concept
+3. `jpg-webp` engine
+4. `resize` engine (Canvas API)
+5. Real output + download flow
+
+**Week 2 — Image polish + PDF:**
+6. `merge-pdf` engine
+7. `image-to-pdf` engine
+8. Batch conversion
+9. Error handling per engine
+
+**Week 3-4 — FFmpeg:**
+10. FFmpeg.wasm integration
+11. Video worker + progress
+12. MP4 → WebM
+13. MP4 → MP3
+14. Cancel + retry
+
+**Week 5-6 — Extra:**
+15. Archive (zip/tar)
+16. EXIF read/write
+17. Capability detection
+18. Performance optimization
+
+**Week 7-8 — Release:**
+19. Testing matrix
+20. Docs
+21. Beta rollout
+22. GA
+
+---
+
+## YANG TIDAK DILAKUKAN DI PHASE 3
+
+❌ **PDF → DOCX** (butuh backend, kompleks)
+❌ **DOCX → PDF** (butuh backend)
+❌ **OCR** (butuh Tesseract + training data, di Phase 4)
+❌ **Video editing advanced** (trim, filter, watermark — Phase 4)
+❌ **AI-powered conversion** (upscale, background removal — Phase 5)
+❌ **Server-side converter full** (Phase 4)
+
+---
+
+## FILOSOFI PHASE 3
+
+```
+"Convert locally first. Fallback when necessary."
+
+Kalau bisa di browser → browser.
+Kalau tidak bisa → backend.
+Kalau tidak bisa dua-duanya → jujur ke user.
+```
+
+**Backend tetap ringan.** Phase 3 fokus bikin browser jadi converter. Backend cuma:
+- Auth
+- Quota
+- Turnstile
+- Fallback (kalau local fail)
+- Analytics
+
+---
+
+## NEXT PHASE (Preview)
+
+**Phase 4:** Server-side fallback untuk PDF ↔ DOCX, OCR, archive kompleks, video editing.
+**Phase 5:** AI-powered (upscale, background removal, subtitle generation).
+**Phase 6:** API access + CLI tool + integration (Zapier, Make).
+
+---
+
+**END OF PHASE 3**
+
+> 🗿 *"Kalau engine-nya bisa jalan di browser, kenapa harus upload ke server?"*

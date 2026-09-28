@@ -2,10 +2,10 @@ import { useRef, useState, type DragEvent } from 'react';
 import { useEngineRegistry } from './hooks/useEngineRegistry';
 import { useEngineLoader } from './hooks/useEngineLoader';
 import { useConversion } from './hooks/useConversion';
+import { engineRegistry } from './lib/engine-registry';
 import { FileValidator } from './lib/file-validator';
 import { ConversionPipeline } from './lib/conversion-pipeline';
 import { DownloadManager } from './lib/download-manager';
-import { engineRegistry } from './lib/engine-registry';
 
 type IconName =
   | 'chevronDown'
