@@ -24,6 +24,9 @@ export class FileValidator {
       { offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF
       { offset: 8, bytes: [0x57, 0x45, 0x42, 0x50] }, // WEBP
     ],
+    bmp: [{ offset: 0, bytes: [0x42, 0x4d] }], // BM
+    gif: [{ offset: 0, bytes: [0x47, 0x49, 0x46] }], // GIF
+    ico: [{ offset: 0, bytes: [0x00, 0x00, 0x01, 0x00] }], // ICO
     mp4: [{ offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] }], // ftyp at offset 4
   };
 

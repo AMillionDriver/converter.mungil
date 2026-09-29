@@ -26,6 +26,32 @@ const engineMap: Record<string, () => Promise<EngineModule>> = {
   'image:webp:jpeg': () => import('./engines/image-jpeg'),
   'image:jpg:jpeg': () => import('./engines/image-jpeg'),
   'image:jpeg:jpg': () => import('./engines/image-jpeg'),
+  // Image → PDF
+  'image:png:pdf': () => import('./engines/image-pdf'),
+  'image:jpg:pdf': () => import('./engines/image-pdf'),
+  'image:jpeg:pdf': () => import('./engines/image-pdf'),
+  'image:webp:pdf': () => import('./engines/image-pdf'),
+  'image:bmp:pdf': () => import('./engines/image-pdf'),
+  'image:gif:pdf': () => import('./engines/image-pdf'),
+  // Image → ICO
+  'image:png:ico': () => import('./engines/image-ico'),
+  'image:jpg:ico': () => import('./engines/image-ico'),
+  'image:jpeg:ico': () => import('./engines/image-ico'),
+  'image:webp:ico': () => import('./engines/image-ico'),
+  'image:bmp:ico': () => import('./engines/image-ico'),
+  // Image → BMP
+  'image:png:bmp': () => import('./engines/image-bmp'),
+  'image:jpg:bmp': () => import('./engines/image-bmp'),
+  'image:jpeg:bmp': () => import('./engines/image-bmp'),
+  'image:webp:bmp': () => import('./engines/image-bmp'),
+  // BMP Input → outputs
+  'image:bmp:webp': () => import('./engines/image-webp'),
+  'image:bmp:png': () => import('./engines/image-png'),
+  'image:bmp:jpeg': () => import('./engines/image-jpeg'),
+  // GIF Input → outputs
+  'image:gif:webp': () => import('./engines/image-webp'),
+  'image:gif:png': () => import('./engines/image-png'),
+  'image:gif:jpeg': () => import('./engines/image-jpeg'),
 };
 
 export class ConversionPipeline {

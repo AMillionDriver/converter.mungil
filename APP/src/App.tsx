@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useEngineRegistry } from './hooks/useEngineRegistry';
 import { useEngineLoader } from './hooks/useEngineLoader';
 import { useConversion } from './hooks/useConversion';
@@ -6,6 +6,14 @@ import { engineRegistry } from './lib/engine-registry';
 import { FileValidator } from './lib/file-validator';
 import { ConversionPipeline } from './lib/conversion-pipeline';
 import { DownloadManager } from './lib/download-manager';
+import { MetadataSideMenu } from './components/MetadataSideMenu';
+import { MetadataDiffModal } from './components/MetadataDiffModal';
+import {
+  ExifEngine,
+  type ExifData,
+  type ExifResult,
+  type MetadataDiffItem,
+} from './engines/image/exif-engine';
 
 type IconName =
   | 'chevronDown'
@@ -84,87 +92,230 @@ function Icon({ name, title }: IconProps) {
   );
 }
 
-function Dropzone() {
+interface DropzoneProps {
+  uploadedFiles: File[];
+  setUploadedFiles: React.Dispatch<React.SetStateAction<File[]>>;
+  activeMetadata: ExifResult | null;
+  editedExif: ExifData;
+  onInterceptDiff: (
+    diffs: MetadataDiffItem[],
+    execute: () => Promise<void>
+  ) => void;
+}
+
+function Dropzone({
+  uploadedFiles,
+  setUploadedFiles,
+  activeMetadata,
+  editedExif,
+  onInterceptDiff,
+}: DropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [selectedFormat, setSelectedFormat] = useState<string>('');
+  const [isMerging, setIsMerging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const addMoreInputRef = useRef<HTMLInputElement>(null);
   const { runConversion, status, progress } = useConversion();
 
-  const handleFiles = async (files: FileList | null) => {
+  const isPdfMerge =
+    uploadedFiles.length > 0 &&
+    uploadedFiles.every((f) => f.name.toLowerCase().endsWith('.pdf'));
+
+  const handleFiles = async (
+    files: FileList | null,
+    append: boolean = false
+  ) => {
     if (!files || files.length === 0) return;
 
-    const file = files[0];
-
-    // Validation Config
+    const fileList = Array.from(files);
     const config = {
-      maxSizeMB: 1024, // 1GB
+      maxSizeMB: 1024,
       allowedMimeTypes: [
         'application/pdf',
         'image/png',
         'image/jpeg',
         'image/webp',
+        'image/bmp',
+        'image/x-icon',
+        'image/vnd.microsoft.icon',
+        'image/gif',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'video/mp4',
       ],
-      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'docx', 'mp4'],
+      allowedExtensions: [
+        'pdf',
+        'png',
+        'jpg',
+        'jpeg',
+        'webp',
+        'bmp',
+        'ico',
+        'gif',
+        'docx',
+        'mp4',
+      ],
     };
 
-    const result = await FileValidator.validate(file, config);
-    if (!result.isValid) {
-      alert(`Invalid file: ${result.error}`);
+    for (const f of fileList) {
+      const result = await FileValidator.validate(f, config);
+      if (!result.isValid) {
+        alert(`Invalid file (${f.name}): ${result.error}`);
+        return;
+      }
+    }
+
+    const nextFiles = append ? [...uploadedFiles, ...fileList] : fileList;
+    setUploadedFiles(nextFiles);
+
+    const allPdfs = nextFiles.every((f) =>
+      f.name.toLowerCase().endsWith('.pdf')
+    );
+    if (allPdfs) {
+      setAvailableFormats(['merge']);
+      setSelectedFormat('merge');
       return;
     }
 
-    const extension = file.name.split('.').pop()?.toLowerCase() || '';
-
-    // Discovery: Find supported output formats from registry
-    const formats = engineRegistry.getSupportedOutputFormats(extension);
-
-    if (formats.length === 0) {
-      alert(`No conversion options available for .${extension} files`);
-      return;
+    if (nextFiles.length === 1) {
+      const ext = nextFiles[0].name.split('.').pop()?.toLowerCase() || '';
+      const formats = engineRegistry.getSupportedOutputFormats(ext);
+      if (formats.length === 0) {
+        alert(`No conversion options available for .${ext} files`);
+        setUploadedFiles([]);
+        return;
+      }
+      setAvailableFormats(formats);
+      setSelectedFormat(formats[0]);
+    } else {
+      // Multiple non-PDF images -> option to convert all to 1 PDF
+      const allImages = nextFiles.every((f) =>
+        ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico'].includes(
+          f.name.split('.').pop()?.toLowerCase() || ''
+        )
+      );
+      if (allImages) {
+        setAvailableFormats(['pdf']);
+        setSelectedFormat('pdf');
+      }
     }
+  };
 
-    setUploadedFile(file);
-    setAvailableFormats(formats);
-    setSelectedFormat(formats[0]);
+  const removeFile = (index: number) => {
+    const updated = uploadedFiles.filter((_, i) => i !== index);
+    setUploadedFiles(updated);
+    if (updated.length === 0) {
+      setAvailableFormats([]);
+      setSelectedFormat('');
+    }
   };
 
   const handleConvert = async () => {
-    if (!uploadedFile || !selectedFormat) return;
+    if (uploadedFiles.length === 0) return;
 
-    try {
-      const extension = uploadedFile.name.split('.').pop()?.toLowerCase() || '';
+    // PDF Merge Mode
+    if (isPdfMerge) {
+      if (uploadedFiles.length < 2) {
+        alert(
+          'Silakan pilih minimal 2 file PDF untuk digabungkan menjadi 1 file.'
+        );
+        return;
+      }
 
-      // Resolve engine via generic pipeline
-      const engine = await ConversionPipeline.resolveAndLoad(
-        extension,
-        selectedFormat
-      );
-
-      console.log(`Using engine: ${engine.id}`);
-
-      const outputBlob = await runConversion(engine.id, uploadedFile);
-
-      // Trigger automatic download using DownloadManager
-      const filename = DownloadManager.generateFilename(
-        uploadedFile.name,
-        selectedFormat
-      );
-      await DownloadManager.download(outputBlob, {
-        filename,
-        mimeType: `application/${selectedFormat}`,
-      });
-
-      console.log('Conversion complete and download triggered.');
-      setUploadedFile(null); // Reset after success
-    } catch (err) {
-      alert(
-        `Conversion error: ${err instanceof Error ? err.message : 'Unknown error'}`
-      );
+      try {
+        setIsMerging(true);
+        const { PdfEngine } = await import('./engines/document/pdf-merge');
+        const outputBlob = await PdfEngine.process({
+          type: 'merge',
+          files: uploadedFiles,
+          options: {},
+        });
+        await DownloadManager.download(outputBlob, {
+          filename: `merged-${Date.now()}.pdf`,
+          mimeType: 'application/pdf',
+        });
+        setUploadedFiles([]);
+      } catch (err) {
+        alert(
+          `Gagal menggabungkan PDF: ${err instanceof Error ? err.message : 'Unknown error'}`
+        );
+      } finally {
+        setIsMerging(false);
+      }
+      return;
     }
+
+    // Multiple Images to Single PDF Mode
+    if (uploadedFiles.length > 1 && selectedFormat === 'pdf') {
+      try {
+        setIsMerging(true);
+        const { PdfEngine } = await import('./engines/document/pdf-merge');
+        const outputBlob = await PdfEngine.process({
+          type: 'image-to-pdf',
+          files: uploadedFiles,
+          options: {},
+        });
+        await DownloadManager.download(outputBlob, {
+          filename: `images-combined-${Date.now()}.pdf`,
+          mimeType: 'application/pdf',
+        });
+        setUploadedFiles([]);
+      } catch (err) {
+        alert(
+          `Gagal membuat PDF: ${err instanceof Error ? err.message : 'Unknown error'}`
+        );
+      } finally {
+        setIsMerging(false);
+      }
+      return;
+    }
+
+    // Single File Conversion
+    const executeSingle = async () => {
+      const targetFile = uploadedFiles[0];
+      try {
+        const extension = targetFile.name.split('.').pop()?.toLowerCase() || '';
+        const engine = await ConversionPipeline.resolveAndLoad(
+          extension,
+          selectedFormat
+        );
+
+        const outputBlob = await runConversion(engine.id, targetFile);
+        const filename = DownloadManager.generateFilename(
+          targetFile.name,
+          selectedFormat
+        );
+        let mimeType = `image/${selectedFormat}`;
+        if (selectedFormat === 'pdf') {
+          mimeType = 'application/pdf';
+        } else if (selectedFormat === 'ico') {
+          mimeType = 'image/x-icon';
+        } else if (selectedFormat === 'bmp') {
+          mimeType = 'image/bmp';
+        }
+
+        await DownloadManager.download(outputBlob, {
+          filename,
+          mimeType,
+        });
+
+        setUploadedFiles([]);
+      } catch (err) {
+        alert(
+          `Conversion error: ${err instanceof Error ? err.message : 'Unknown error'}`
+        );
+      }
+    };
+
+    if (activeMetadata) {
+      const diffs = ExifEngine.computeDiff(activeMetadata.exif, editedExif);
+      if (diffs.length > 0) {
+        onInterceptDiff(diffs, executeSingle);
+        return;
+      }
+    }
+
+    await executeSingle();
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -183,6 +334,8 @@ function Dropzone() {
     handleFiles(e.dataTransfer.files);
   };
 
+  const isBusy = status === 'processing' || isMerging;
+
   return (
     <div
       onDragOver={handleDragOver}
@@ -198,88 +351,134 @@ function Dropzone() {
         }
       `}
     >
-      {!uploadedFile ? (
-        <>
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            onChange={(e) => handleFiles(e.target.files)}
-          />
-          <div className="flex flex-col items-center text-center">
-            <div
-              className={`
-              mb-4 rounded-full p-4 transition-colors duration-200
-              ${isDragging ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}
-            `}
-            >
-              <Icon name="upload" title="Upload file" />
-            </div>
-            <div className="mb-6">
-              <button
-                disabled={status === 'processing'}
-                onClick={() => fileInputRef.current?.click()}
-                className={`rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95 ${
-                  status === 'processing'
-                    ? 'bg-slate-400 cursor-not-allowed'
-                    : 'bg-indigo-600'
-                }`}
-              >
-                {status === 'processing'
-                  ? `Processing ${progress}%...`
-                  : 'Pilih File'}
-              </button>
-              <p className="mt-3 text-sm text-slate-500">
-                atau seret dan lepas file di sini
-              </p>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center text-center py-4">
-          <div className="mb-6">
-            <p className="text-sm font-medium text-slate-900 mb-1">
-              {uploadedFile.name}
-            </p>
-            <p className="text-xs text-slate-500 mb-4">
-              {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
-            </p>
+      <input
+        type="file"
+        multiple
+        ref={fileInputRef}
+        className="hidden"
+        onChange={(e) => handleFiles(e.target.files)}
+      />
+      <input
+        type="file"
+        multiple
+        accept=".pdf"
+        ref={addMoreInputRef}
+        className="hidden"
+        onChange={(e) => handleFiles(e.target.files, true)}
+      />
 
-            <div className="flex items-center justify-center gap-3">
-              <label className="text-sm text-slate-600">Konversi ke:</label>
-              <select
-                value={selectedFormat}
-                onChange={(e) => setSelectedFormat(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-              >
-                {availableFormats.map((format) => (
-                  <option key={format} value={format}>
-                    {format.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {uploadedFiles.length === 0 ? (
+        <div className="flex flex-col items-center text-center">
+          <div
+            className={`
+            mb-4 rounded-full p-4 transition-colors duration-200
+            ${isDragging ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}
+          `}
+          >
+            <Icon name="upload" title="Upload file" />
           </div>
+          <div className="mb-6">
+            <button
+              disabled={isBusy}
+              onClick={() => fileInputRef.current?.click()}
+              className={`rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95 ${
+                isBusy ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600'
+              }`}
+            >
+              {isBusy ? 'Memproses...' : 'Pilih File'}
+            </button>
+            <p className="mt-3 text-sm text-slate-500">
+              atau seret dan lepas file di sini (mendukung banyak file
+              sekaligus)
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center text-center py-2">
+          {isPdfMerge ? (
+            <div className="w-full max-w-md mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-slate-900">
+                  File PDF ({uploadedFiles.length} file)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => addMoreInputRef.current?.click()}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition"
+                >
+                  + Tambah PDF Lagi
+                </button>
+              </div>
+              <ul className="max-h-48 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50 p-2 text-left text-xs text-slate-700">
+                {uploadedFiles.map((f, i) => (
+                  <li
+                    key={`${f.name}-${i}`}
+                    className="flex items-center justify-between py-1.5 px-2"
+                  >
+                    <span className="truncate pr-2 font-medium">{f.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="text-rose-500 hover:text-rose-700 font-medium ml-2 shrink-0"
+                    >
+                      Hapus
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {uploadedFiles.length < 2 && (
+                <p className="mt-2 text-xs text-amber-600">
+                  Tambahkan minimal 1 file PDF lagi untuk mulai menggabungkan.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="mb-6">
+              <p className="text-sm font-medium text-slate-900 mb-1">
+                {uploadedFiles[0].name}
+              </p>
+              <p className="text-xs text-slate-500 mb-4">
+                {(uploadedFiles[0].size / 1024 / 1024).toFixed(2)} MB
+              </p>
+
+              <div className="flex items-center justify-center gap-3">
+                <label className="text-sm text-slate-600">Konversi ke:</label>
+                <select
+                  value={selectedFormat}
+                  onChange={(e) => setSelectedFormat(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                >
+                  {availableFormats.map((format) => (
+                    <option key={format} value={format}>
+                      {format.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <button
-              onClick={() => setUploadedFile(null)}
+              onClick={() => setUploadedFiles([])}
               className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
             >
-              Ganti File
+              Batal
             </button>
             <button
-              disabled={status === 'processing'}
+              disabled={isBusy || (isPdfMerge && uploadedFiles.length < 2)}
               onClick={handleConvert}
               className={`rounded-lg px-6 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95 ${
-                status === 'processing'
+                isBusy || (isPdfMerge && uploadedFiles.length < 2)
                   ? 'bg-slate-400 cursor-not-allowed'
                   : 'bg-indigo-600'
               }`}
             >
-              {status === 'processing'
-                ? `Processing ${progress}%...`
-                : 'Konversi Sekarang'}
+              {isBusy
+                ? `Memproses ${progress > 0 ? `${progress}%` : '...'}`
+                : isPdfMerge
+                  ? 'Gabungkan PDF'
+                  : 'Konversi Sekarang'}
             </button>
           </div>
         </div>
@@ -416,8 +615,150 @@ function Footer() {
 
 function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [activeMetadata, setActiveMetadata] = useState<ExifResult | null>(null);
+  const [editedExif, setEditedExif] = useState<ExifData>({});
+  const [isReadingMetadata, setIsReadingMetadata] = useState(false);
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
+  const [isMobileMetadataOpen, setIsMobileMetadataOpen] = useState(false);
+  const [activeDiffs, setActiveDiffs] = useState<MetadataDiffItem[]>([]);
+  const [pendingConvertAction, setPendingConvertAction] = useState<
+    (() => Promise<void>) | null
+  >(null);
+
   useEngineRegistry();
   useEngineLoader();
+
+  useEffect(() => {
+    if (uploadedFiles.length === 1) {
+      const file = uploadedFiles[0];
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      const isImage = [
+        'png',
+        'jpg',
+        'jpeg',
+        'webp',
+        'bmp',
+        'gif',
+        'ico',
+      ].includes(ext);
+      if (isImage) {
+        setIsReadingMetadata(true);
+        ExifEngine.read(file)
+          .then((res) => {
+            setActiveMetadata(res);
+            setEditedExif({ ...res.exif });
+          })
+          .catch((err) => {
+            console.warn('Gagal membaca EXIF:', err);
+            setActiveMetadata(null);
+            setEditedExif({});
+          })
+          .finally(() => {
+            setIsReadingMetadata(false);
+          });
+        return;
+      }
+    }
+    setActiveMetadata(null);
+    setEditedExif({});
+  }, [uploadedFiles]);
+
+  const handleUpdateExifField = (key: string, value: string) => {
+    setEditedExif((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleRemoveGps = () => {
+    setEditedExif((prev) => ({
+      ...prev,
+      GPSLatitude: undefined,
+      GPSLongitude: undefined,
+      GPSAltitude: undefined,
+    }));
+  };
+
+  const handleUpdateCoordinates = (
+    lat?: number,
+    long?: number,
+    alt?: number
+  ) => {
+    setEditedExif((prev) => ({
+      ...prev,
+      GPSLatitude: lat,
+      GPSLongitude: long,
+      ...(alt !== undefined ? { GPSAltitude: alt } : {}),
+    }));
+  };
+
+  const handleUpdateDevice = (
+    make: string,
+    model: string,
+    software: string
+  ) => {
+    setEditedExif((prev) => ({
+      ...prev,
+      Make: make,
+      Model: model,
+      Software: software,
+    }));
+  };
+
+  const handleStripAllExif = () => {
+    setEditedExif({
+      Artist: '',
+      Copyright: '',
+      ImageDescription: '',
+      Software: '',
+      Make: undefined,
+      Model: undefined,
+      LensModel: undefined,
+      DateTimeOriginal: undefined,
+      GPSLatitude: undefined,
+      GPSLongitude: undefined,
+      GPSAltitude: undefined,
+      FNumber: undefined,
+      ExposureTime: undefined,
+      ISO: undefined,
+      FocalLength: undefined,
+    });
+  };
+
+  const handleResetExif = () => {
+    if (activeMetadata) {
+      setEditedExif({ ...activeMetadata.exif });
+    }
+  };
+
+  const hasMetadataChanges = Boolean(
+    activeMetadata &&
+      ExifEngine.computeDiff(activeMetadata.exif, editedExif).length > 0
+  );
+
+  const handleInterceptDiff = (
+    diffs: MetadataDiffItem[],
+    execute: () => Promise<void>
+  ) => {
+    setActiveDiffs(diffs);
+    setPendingConvertAction(() => execute);
+    setIsDiffModalOpen(true);
+  };
+
+  const handleConfirmDiffModal = async () => {
+    setIsDiffModalOpen(false);
+    if (pendingConvertAction) {
+      const action = pendingConvertAction;
+      setPendingConvertAction(null);
+      await action();
+    }
+  };
+
+  const handleCancelDiffModal = () => {
+    setIsDiffModalOpen(false);
+    setPendingConvertAction(null);
+  };
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen((currentState) => !currentState);
@@ -531,14 +872,29 @@ function App() {
         <div className="w-full">
           {/* Grid 3 kolom desktop, 1 kolom mobile */}
           <div className="grid gap-8 lg:grid-cols-[280px_1fr_280px]">
-            {/* Kolom Kiri - Ad Banner */}
+            {/* Kolom Kiri - Ad Banner / Metadata Side Menu */}
             <aside
-              aria-label="Iklan kiri"
-              className="hidden lg:block w-full max-w-[280px] self-start"
+              aria-label={activeMetadata ? 'Metadata Inspector' : 'Iklan kiri'}
+              className="hidden lg:block w-full max-w-[280px] self-start sticky top-24"
             >
-              <div className="h-96 rounded-2xl border border-slate-200 bg-white flex items-center justify-center">
-                <span className="text-sm text-slate-400">Advertisement</span>
-              </div>
+              {activeMetadata ? (
+                <MetadataSideMenu
+                  metadata={activeMetadata}
+                  editedExif={editedExif}
+                  isLoading={isReadingMetadata}
+                  hasChanges={hasMetadataChanges}
+                  onUpdateField={handleUpdateExifField}
+                  onUpdateCoordinates={handleUpdateCoordinates}
+                  onUpdateDevice={handleUpdateDevice}
+                  onRemoveGps={handleRemoveGps}
+                  onStripAll={handleStripAllExif}
+                  onReset={handleResetExif}
+                />
+              ) : (
+                <div className="h-96 rounded-2xl border border-slate-200 bg-white flex items-center justify-center">
+                  <span className="text-sm text-slate-400">Advertisement</span>
+                </div>
+              )}
             </aside>
 
             {/* Kolom Tengah - Core Tool */}
@@ -555,8 +911,94 @@ function App() {
 
               {/* Dropzone */}
               <div className="relative" id="converter-dropzone">
-                <Dropzone />
+                <Dropzone
+                  uploadedFiles={uploadedFiles}
+                  setUploadedFiles={setUploadedFiles}
+                  activeMetadata={activeMetadata}
+                  editedExif={editedExif}
+                  onInterceptDiff={handleInterceptDiff}
+                />
               </div>
+
+              {/* Mobile Accordion for Metadata Inspector */}
+              {activeMetadata && (
+                <div className="mt-6 block lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setIsMobileMetadataOpen(!isMobileMetadataOpen)
+                    }
+                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-4 text-left shadow-xs transition hover:bg-slate-50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                        <svg
+                          className="size-5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Zm3.75 11.625a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"
+                          />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-slate-900">
+                            Metadata & EXIF
+                          </span>
+                          {hasMetadataChanges && (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 border border-amber-200">
+                              Ada Perubahan
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          {isMobileMetadataOpen
+                            ? 'Tutup panel pengeditan'
+                            : 'Ketuk untuk memeriksa & mengedit metadata'}
+                        </p>
+                      </div>
+                    </div>
+                    <svg
+                      className={`size-5 text-slate-400 transition-transform duration-200 ${
+                        isMobileMetadataOpen ? 'rotate-180' : ''
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                      />
+                    </svg>
+                  </button>
+
+                  {isMobileMetadataOpen && (
+                    <div className="mt-3">
+                      <MetadataSideMenu
+                        metadata={activeMetadata}
+                        editedExif={editedExif}
+                        isLoading={isReadingMetadata}
+                        hasChanges={hasMetadataChanges}
+                        onUpdateField={handleUpdateExifField}
+                        onUpdateCoordinates={handleUpdateCoordinates}
+                        onUpdateDevice={handleUpdateDevice}
+                        onRemoveGps={handleRemoveGps}
+                        onStripAll={handleStripAllExif}
+                        onReset={handleResetExif}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Support text + Turnstile */}
               <div className="mt-6 space-y-3">
@@ -606,6 +1048,13 @@ function App() {
           </div>
         </div>
       </main>
+
+      <MetadataDiffModal
+        isOpen={isDiffModalOpen}
+        diffs={activeDiffs}
+        onConfirm={handleConfirmDiffModal}
+        onCancel={handleCancelDiffModal}
+      />
 
       <Footer />
     </div>

@@ -23,18 +23,45 @@ async function loadEngineModule(engineId: string) {
       case 'image:png:webp':
       case 'image:jpeg:webp':
       case 'image:jpg:webp':
+      case 'image:bmp:webp':
+      case 'image:gif:webp':
         engineModules[engineId] = await import('../lib/engines/image-webp');
         break;
       case 'image:webp:png':
       case 'image:jpeg:png':
       case 'image:jpg:png':
+      case 'image:bmp:png':
+      case 'image:gif:png':
         engineModules[engineId] = await import('../lib/engines/image-png');
         break;
       case 'image:png:jpeg':
       case 'image:webp:jpeg':
       case 'image:jpg:jpeg':
       case 'image:jpeg:jpg':
+      case 'image:bmp:jpeg':
+      case 'image:gif:jpeg':
         engineModules[engineId] = await import('../lib/engines/image-jpeg');
+        break;
+      case 'image:png:pdf':
+      case 'image:jpeg:pdf':
+      case 'image:jpg:pdf':
+      case 'image:webp:pdf':
+      case 'image:bmp:pdf':
+      case 'image:gif:pdf':
+        engineModules[engineId] = await import('../lib/engines/image-pdf');
+        break;
+      case 'image:png:ico':
+      case 'image:jpg:ico':
+      case 'image:jpeg:ico':
+      case 'image:webp:ico':
+      case 'image:bmp:ico':
+        engineModules[engineId] = await import('../lib/engines/image-ico');
+        break;
+      case 'image:png:bmp':
+      case 'image:jpg:bmp':
+      case 'image:jpeg:bmp':
+      case 'image:webp:bmp':
+        engineModules[engineId] = await import('../lib/engines/image-bmp');
         break;
       default:
         throw new Error(`Unknown engine: ${engineId}`);

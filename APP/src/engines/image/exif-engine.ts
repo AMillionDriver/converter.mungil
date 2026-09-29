@@ -1,51 +1,128 @@
 import { EngineLogger } from '../shared/EngineLogger';
 
+export interface ExifData {
+  Make?: string;
+  Model?: string;
+  Software?: string;
+  LensModel?: string;
+  DateTimeOriginal?: string | Date;
+  GPSLatitude?: number;
+  GPSLongitude?: number;
+  GPSAltitude?: number;
+  FNumber?: number;
+  ExposureTime?: number;
+  ISO?: number;
+  FocalLength?: number;
+  Artist?: string;
+  Copyright?: string;
+  ImageDescription?: string;
+  width?: number;
+  height?: number;
+  [key: string]: unknown;
+}
+
+export interface ExifResult {
+  format: string;
+  size: number;
+  created: Date;
+  modified: Date;
+  width?: number;
+  height?: number;
+  exif: ExifData;
+}
+
+export interface MetadataDiffItem {
+  key: string;
+  label: string;
+  before: string;
+  after: string;
+  type: 'added' | 'modified' | 'removed';
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  Make: 'Merek Kamera',
+  Model: 'Model Perangkat',
+  Software: 'Perangkat Lunak / OS',
+  LensModel: 'Model Lensa',
+  DateTimeOriginal: 'Waktu Pengambilan',
+  GPSLatitude: 'GPS Latitude',
+  GPSLongitude: 'GPS Longitude',
+  GPSAltitude: 'GPS Altitude',
+  FNumber: 'Aperture (f-stop)',
+  ExposureTime: 'Shutter Speed',
+  ISO: 'ISO',
+  FocalLength: 'Focal Length',
+  Artist: 'Fotografer / Artis',
+  Copyright: 'Hak Cipta (Copyright)',
+  ImageDescription: 'Deskripsi Gambar',
+};
+
 export class ExifEngine {
   /**
    * Read EXIF / metadata from an image File or Blob.
-   * Uses exifr when available, falls back to mock metadata.
+   * Uses exifr when available, and extracts dimensions via createImageBitmap.
    */
   static async read(file: File): Promise<ExifResult> {
     const startTime = performance.now();
     try {
-      let exif: ExifData | null = null;
+      let exif: ExifData = {};
 
       try {
-        // Dynamic import so the module is only loaded when needed
         const exifr = await import('exifr');
-        exif = await exifr.parse(file, {
+        const parsed = await exifr.parse(file, {
           pick: [
             'Make',
             'Model',
             'Software',
+            'LensModel',
             'DateTimeOriginal',
             'GPSLatitude',
             'GPSLongitude',
+            'GPSAltitude',
             'FNumber',
             'ExposureTime',
             'ISO',
+            'FocalLength',
+            'Artist',
+            'Copyright',
+            'ImageDescription',
           ],
         });
+        if (parsed) {
+          exif = parsed;
+        }
       } catch (err) {
-        EngineLogger.warn(
-          'exif-engine',
-          'exifr parse failed, using fallback',
-          err
-        );
+        EngineLogger.warn('exif-engine', 'exifr parse skipped or failed', err);
+      }
+
+      // Read dimensions if available
+      let width: number | undefined;
+      let height: number | undefined;
+      try {
+        if (typeof createImageBitmap !== 'undefined') {
+          const bitmap = await createImageBitmap(file);
+          width = bitmap.width;
+          height = bitmap.height;
+          bitmap.close();
+        }
+      } catch {
+        // Dimensions optional
       }
 
       const metadata: ExifResult = {
-        format: file.type,
+        format: file.type || 'image/unknown',
         size: file.size,
-        created: new Date(),
-        modified: new Date(),
-        exif: exif ?? makeFallbackExif(),
+        created: new Date(file.lastModified || Date.now()),
+        modified: new Date(file.lastModified || Date.now()),
+        width,
+        height,
+        exif,
       };
 
       EngineLogger.log({
         engineId: 'exif-engine',
         operation: 'read-metadata',
-        status: exif ? 'success' : 'warn',
+        status: Object.keys(exif).length > 0 ? 'success' : 'warn',
         duration: performance.now() - startTime,
         inputSize: file.size,
         timestamp: Date.now(),
@@ -59,81 +136,48 @@ export class ExifEngine {
   }
 
   /**
-   * Write EXIF back into a file (placeholder).
-   * Full implementation would use piexifjs or exifr's write capability.
-   * Currently returns the original blob unchanged.
+   * Computes a structured diff between the original EXIF and user-edited EXIF.
    */
-  static async write(file: File): Promise<Blob> {
-    const startTime = performance.now();
-    try {
-      // TODO: implement piexifjs-based EXIF rewrite
-      EngineLogger.log({
-        engineId: 'exif-engine',
-        operation: 'write-metadata',
-        status: 'warn',
-        duration: performance.now() - startTime,
-        inputSize: file.size,
-        timestamp: Date.now(),
-      });
+  static computeDiff(
+    original: ExifData = {},
+    edited: ExifData = {}
+  ): MetadataDiffItem[] {
+    const allKeys = Array.from(
+      new Set([...Object.keys(original), ...Object.keys(edited)])
+    ).filter(
+      (k) => !['width', 'height', 'created', 'modified', 'format', 'size'].includes(k)
+    );
 
-      return new Blob([await file.arrayBuffer()], { type: file.type });
-    } catch (error) {
-      EngineLogger.error('exif-engine', 'Metadata write failed', error);
-      throw error;
+    const diffs: MetadataDiffItem[] = [];
+
+    for (const key of allKeys) {
+      const origVal = original[key];
+      const editVal = edited[key];
+
+      const origStr =
+        origVal !== undefined && origVal !== null
+          ? String(origVal instanceof Date ? origVal.toISOString() : origVal).trim()
+          : '';
+      const editStr =
+        editVal !== undefined && editVal !== null
+          ? String(editVal instanceof Date ? editVal.toISOString() : editVal).trim()
+          : '';
+
+      if (origStr !== editStr) {
+        let type: 'added' | 'modified' | 'removed' = 'modified';
+        if (!origStr && editStr) type = 'added';
+        else if (origStr && !editStr) type = 'removed';
+
+        diffs.push({
+          key,
+          label: FIELD_LABELS[key] || key,
+          before: origStr || '(Kosong)',
+          after: editStr || '(Dihapus)',
+          type,
+        });
+      }
     }
+
+    return diffs;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface ExifData {
-  Make?: string;
-  Model?: string;
-  Software?: string;
-  DateTimeOriginal?: string;
-  GPSLatitude?: number;
-  GPSLongitude?: number;
-  FNumber?: number;
-  ExposureTime?: number;
-  ISO?: number;
-  [key: string]: unknown;
-}
-
-export interface ExifResult {
-  format: string;
-  size: number;
-  created: Date;
-  modified: Date;
-  exif: ExifData;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeFallbackExif(): ExifData {
-  return {
-    Make: 'Flowy Camera',
-    Model: 'WASM-100',
-    Software: 'Flowy OS',
-    GPSLatitude: 0,
-    GPSLongitude: 0,
-  };
-}
-
-// extend EngineLogger with a warn helper if not present
-declare module '../shared/EngineLogger' {
-  interface EngineLoggerStatic {
-    warn(engineId: string, message: string, error?: unknown): void;
-  }
-}
-
-EngineLogger.warn = function (
-  engineId: string,
-  message: string,
-  error?: unknown
-) {
-  console.warn(`[EngineLogger] ⚠️ ${engineId} WARN: ${message}`, error || '');
-};
