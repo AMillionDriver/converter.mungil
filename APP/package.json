@@ -9,6 +9,8 @@
     "dev:server": "npm run dev --prefix server",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "format:check": "prettier --check .",
     "format:write": "prettier --write .",
     "preview": "vite preview"
@@ -45,6 +47,7 @@
     "prettier": "latest",
     "tailwindcss": "latest",
     "typescript": "latest",
-    "typescript-eslint": "latest"
+    "typescript-eslint": "latest",
+    "vitest": "^5.0.2"
   }
 }

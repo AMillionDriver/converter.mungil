@@ -33,8 +33,18 @@ export function AdBanner({
   const clientId =
     import.meta.env.VITE_ADSENSE_CLIENT_ID || 'ca-pub-1234567890123456';
 
+  const isDummyClient =
+    !clientId ||
+    clientId === 'ca-pub-1234567890123456' ||
+    clientId.includes('0000000000000000');
+
   useEffect(() => {
-    // Inject AdSense script once if not already present
+    // Only load external Google AdSense script when a real publisher ID is supplied
+    // to prevent Google Ad servers from returning HTTP 400 Bad Request on placeholder IDs.
+    if (isDummyClient || isTest) {
+      return;
+    }
+
     const scriptId = 'google-adsense-script';
     let script = document.getElementById(scriptId) as HTMLScriptElement | null;
 
@@ -58,17 +68,17 @@ export function AdBanner({
     } else {
       setAdLoaded(true);
     }
-  }, [clientId]);
+  }, [clientId, isDummyClient, isTest]);
 
   useEffect(() => {
-    if (adLoaded && !adBlocked) {
+    if (adLoaded && !adBlocked && !isDummyClient && !isTest) {
       try {
         (window.adsbygoogle = window.adsbygoogle || []).push({});
       } catch (err) {
         console.warn('[AdSense] Push error:', err);
       }
     }
-  }, [adLoaded, adBlocked]);
+  }, [adLoaded, adBlocked, isDummyClient, isTest]);
 
   return (
     <div
@@ -96,16 +106,17 @@ export function AdBanner({
 
       {/* Ad Content Container */}
       <div className="flex min-h-[320px] flex-col items-center justify-between rounded-xl bg-slate-50/70 p-3 text-center border border-dashed border-slate-200/80">
-        {/* Real AdSense tag with data-adtest="on" */}
-        <ins
-          className="adsbygoogle w-full"
-          style={{ display: 'block', minHeight: '180px' }}
-          data-ad-client={clientId}
-          data-ad-slot={slotId}
-          data-ad-format={format}
-          data-full-width-responsive="true"
-          data-adtest={isTest ? 'on' : 'off'}
-        />
+        {/* Real AdSense tag (only active when real publisher ID is present in production) */}
+        {!isDummyClient && !isTest && (
+          <ins
+            className="adsbygoogle w-full"
+            style={{ display: 'block', minHeight: '180px' }}
+            data-ad-client={clientId}
+            data-ad-slot={slotId}
+            data-ad-format={format}
+            data-full-width-responsive="true"
+          />
+        )}
 
         {/* Realistic Google Test Ad Card (Fallback & Simulator) */}
         <div className="w-full flex flex-col items-center justify-between gap-3 py-2">

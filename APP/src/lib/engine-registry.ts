@@ -1,7 +1,11 @@
 import type { EngineMetadata, EngineRegistry } from './engine-types';
 
 export class EngineRegistryManager {
-  private registry: EngineRegistry = {};
+  private registry: EngineRegistry;
+
+  constructor() {
+    this.registry = { ...EngineRegistryManager.BUILTIN_REGISTRY };
+  }
 
   // Built-in manifest fallback — uses jsquash codecs already bundled
   // in node_modules. This allows Phase 1 to function without backend.
@@ -376,6 +380,55 @@ export class EngineRegistryManager {
     },
     'image:gif:jpeg': {
       id: 'image:gif:jpeg',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 518000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    // ICO inputs
+    'image:ico:png': {
+      id: 'image:ico:png',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 216000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:ico:webp': {
+      id: 'image:ico:webp',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 893000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:ico:jpeg': {
+      id: 'image:ico:jpeg',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 518000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
+    'image:ico:jpg': {
+      id: 'image:ico:jpg',
       version: '1.0.0',
       type: 'wasm',
       size: 518000,
