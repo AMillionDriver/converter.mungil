@@ -177,4 +177,3 @@ export const enginesManifest = {
 };
 
 export type RequestShape = FastifyRequest;
-void RequestShape; // unused import kept for future type narrowing

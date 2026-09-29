@@ -1,10 +1,17 @@
-import Fastify from 'fastify';
+import Fastify, { FastifyError } from 'fastify';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import config from './config/env.js';
 import { verifyTurnstileToken } from './utils/turnstile.js';
 import { DEFAULT_RATE_LIMITS } from './lib/rate-limits.js';
+
+declare module 'fastify' {
+  interface FastifyReply {
+    sendResponse: (data: unknown, code?: number) => void;
+  }
+}
 
 const server = Fastify({
   logger:
@@ -133,7 +140,7 @@ server.get('/api/user/limits', async (request, reply) => {
 });
 
 // Global Error Handler
-server.setErrorHandler((error, request, reply) => {
+server.setErrorHandler((error: FastifyError, request, reply) => {
   server.log.error(error);
   reply.status(error.statusCode || 500).send({
     success: false,
@@ -144,14 +151,26 @@ server.setErrorHandler((error, request, reply) => {
   });
 });
 
-const start = async () => {
-  try {
-    await server.listen({ port: config.PORT, host: '0.0.0.0' });
-    console.log(`🚀 Server running at http://localhost:${config.PORT}`);
-  } catch (err) {
-    server.log.error(err);
-    process.exit(1);
-  }
-};
+// Vercel Serverless Function Handler
+export default async function handler(
+  req: IncomingMessage,
+  res: ServerResponse
+) {
+  await server.ready();
+  server.server.emit('request', req, res);
+}
 
-start();
+// Local Persistent Server
+if (!process.env.VERCEL) {
+  const start = async () => {
+    try {
+      await server.listen({ port: config.PORT, host: '0.0.0.0' });
+      console.log(`🚀 Server running at http://localhost:${config.PORT}`);
+    } catch (err) {
+      server.log.error(err);
+      process.exit(1);
+    }
+  };
+
+  start();
+}
