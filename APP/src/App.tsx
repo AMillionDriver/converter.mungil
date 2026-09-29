@@ -8,6 +8,7 @@ import { ConversionPipeline } from './lib/conversion-pipeline';
 import { DownloadManager } from './lib/download-manager';
 import { MetadataSideMenu } from './components/MetadataSideMenu';
 import { MetadataDiffModal } from './components/MetadataDiffModal';
+import { AdBanner } from './components/AdBanner';
 import {
   ExifEngine,
   type ExifData,
@@ -992,9 +993,12 @@ function App() {
                   onReset={handleResetExif}
                 />
               ) : (
-                <div className="h-96 rounded-2xl border border-slate-200 bg-white flex items-center justify-center">
-                  <span className="text-sm text-slate-400">Advertisement</span>
-                </div>
+                <AdBanner
+                  slotId="1029384756"
+                  format="vertical"
+                  label="Advertisement"
+                  isTest={true}
+                />
               )}
             </aside>
 
@@ -1134,17 +1138,30 @@ function App() {
                     data-theme="light"
                   ></div>
                 </div>
+
+                {/* Mobile Ad Banner */}
+                <div className="mt-8 block lg:hidden w-full">
+                  <AdBanner
+                    slotId="9876543210"
+                    format="rectangle"
+                    label="Advertisement"
+                    isTest={true}
+                  />
+                </div>
               </div>
             </section>
 
             {/* Kolom Kanan - Ad Banner */}
             <aside
               aria-label="Iklan kanan"
-              className="hidden lg:block w-full max-w-[280px] self-start"
+              className="hidden lg:block w-full max-w-[280px] self-start sticky top-24"
             >
-              <div className="h-96 rounded-2xl border border-slate-200 bg-white flex items-center justify-center">
-                <span className="text-sm text-slate-400">Advertisement</span>
-              </div>
+              <AdBanner
+                slotId="5647382910"
+                format="vertical"
+                label="Advertisement"
+                isTest={true}
+              />
             </aside>
           </div>
         </div>
