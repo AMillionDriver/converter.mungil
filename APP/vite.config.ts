@@ -22,4 +22,12 @@ export default defineConfig({
     // Pre-bundle @jsquash so its .wasm assets are discovered early
     include: ['@jsquash/jpeg', '@jsquash/png', '@jsquash/webp'],
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
+  },
 });

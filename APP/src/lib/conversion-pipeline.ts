@@ -48,6 +48,12 @@ const engineMap: Record<string, () => Promise<EngineModule>> = {
   'image:bmp:webp': () => import('./engines/image-webp'),
   'image:bmp:png': () => import('./engines/image-png'),
   'image:bmp:jpeg': () => import('./engines/image-jpeg'),
+  'image:bmp:jpg': () => import('./engines/image-jpeg'),
+  // ICO Input → outputs
+  'image:ico:png': () => import('./engines/image-png'),
+  'image:ico:webp': () => import('./engines/image-webp'),
+  'image:ico:jpeg': () => import('./engines/image-jpeg'),
+  'image:ico:jpg': () => import('./engines/image-jpeg'),
   // GIF Input → outputs
   'image:gif:webp': () => import('./engines/image-webp'),
   'image:gif:png': () => import('./engines/image-png'),
@@ -61,15 +67,14 @@ export class ConversionPipeline {
     inputFormat: string,
     outputFormat: string
   ): Promise<ConversionEngine> {
-    const category = this.getCategory(inputFormat);
-    const engineId = `${category}:${inputFormat}:${outputFormat}`;
-
     const metadata = engineRegistry.resolveEngine(inputFormat, outputFormat);
     if (!metadata) {
       throw new Error(
         `No engine found for conversion from ${inputFormat} to ${outputFormat}`
       );
     }
+
+    const engineId = metadata.id;
 
     // If engine instance cached, return it
     if (this.engines.has(engineId)) {
@@ -84,7 +89,11 @@ export class ConversionPipeline {
       },
       convert: async (file: File, options?: Record<string, unknown>) => {
         // Delegate to the engine module's runConversion
-        const module = await engineMap[engineId]();
+        const loader = engineMap[engineId];
+        if (!loader) {
+          throw new Error(`Engine implementation module not found for ${engineId}`);
+        }
+        const module = await loader();
         return module.runConversion(file, options);
       },
     };
@@ -117,19 +126,5 @@ export class ConversionPipeline {
 
   static getSupportedEngineIds(): string[] {
     return Object.keys(engineMap);
-  }
-
-  private static getCategory(format: string): string {
-    const categories: Record<string, string> = {
-      png: 'image',
-      jpg: 'image',
-      jpeg: 'image',
-      webp: 'image',
-      pdf: 'document',
-      docx: 'document',
-      mp4: 'video',
-      webm: 'video',
-    };
-    return categories[format.toLowerCase()] || 'unknown';
   }
 }

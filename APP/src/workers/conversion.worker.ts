@@ -24,6 +24,7 @@ async function loadEngineModule(engineId: string) {
       case 'image:jpeg:webp':
       case 'image:jpg:webp':
       case 'image:bmp:webp':
+      case 'image:ico:webp':
       case 'image:gif:webp':
         engineModules[engineId] = await import('../lib/engines/image-webp');
         break;
@@ -31,6 +32,7 @@ async function loadEngineModule(engineId: string) {
       case 'image:jpeg:png':
       case 'image:jpg:png':
       case 'image:bmp:png':
+      case 'image:ico:png':
       case 'image:gif:png':
         engineModules[engineId] = await import('../lib/engines/image-png');
         break;
@@ -39,6 +41,9 @@ async function loadEngineModule(engineId: string) {
       case 'image:jpg:jpeg':
       case 'image:jpeg:jpg':
       case 'image:bmp:jpeg':
+      case 'image:bmp:jpg':
+      case 'image:ico:jpeg':
+      case 'image:ico:jpg':
       case 'image:gif:jpeg':
         engineModules[engineId] = await import('../lib/engines/image-jpeg');
         break;
@@ -95,9 +100,31 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
     case 'CONVERT': {
-      const { engineId, file, options } = payload;
+      const { engineId, file: rawFile, options } = payload;
       try {
         isCancelled = false;
+        let file: File = rawFile;
+
+        // Auto-heal inverted legacy BMP headers ("MB" -> "BM")
+        if (file.name.toLowerCase().endsWith('.bmp')) {
+          try {
+            const headerSlice = await file.slice(0, 2).arrayBuffer();
+            const bytes = new Uint8Array(headerSlice);
+            if (bytes[0] === 0x4d && bytes[1] === 0x42) {
+              const repairedBlob = new Blob(
+                [new Uint8Array([0x42, 0x4d]), file.slice(2)],
+                { type: 'image/bmp' }
+              );
+              file = new File([repairedBlob], file.name, {
+                type: 'image/bmp',
+                lastModified: file.lastModified,
+              });
+            }
+          } catch {
+            // Keep file as is
+          }
+        }
+
         const module = await loadEngineModule(engineId);
 
         // The engine's runConversion function accepts (file, options, onProgress)

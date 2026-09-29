@@ -44,7 +44,8 @@ export async function runConversion(
     const bytes = new Uint8Array(buffer);
 
     // --- BITMAPFILEHEADER (14 bytes) ---
-    view.setUint16(0, 0x4d42, false); // 'BM' in little-endian
+    bytes[0] = 0x42; // 'B'
+    bytes[1] = 0x4d; // 'M'
     view.setUint32(2, fileSize, true); // Total file size
     view.setUint16(6, 0, true); // Reserved
     view.setUint16(8, 0, true); // Reserved

@@ -325,6 +325,18 @@ export class EngineRegistryManager {
       requiresHardwareAcceleration: false,
       recommendedRamMB: 512,
     },
+    'image:bmp:jpg': {
+      id: 'image:bmp:jpg',
+      version: '1.0.0',
+      type: 'wasm',
+      size: 518000,
+      script: 'builtin',
+      checksum: 'local',
+      maxFileSizeMB: 100,
+      minBrowserVersion: 'Chrome 90',
+      requiresHardwareAcceleration: false,
+      recommendedRamMB: 512,
+    },
     'image:bmp:pdf': {
       id: 'image:bmp:pdf',
       version: '1.0.0',

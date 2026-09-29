@@ -111,12 +111,41 @@ function Dropzone({
   onInterceptDiff,
 }: DropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbLoadError, setThumbLoadError] = useState(false);
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [selectedFormat, setSelectedFormat] = useState<string>('');
   const [isMerging, setIsMerging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const { runConversion, status, progress } = useConversion();
+
+  useEffect(() => {
+    let active = true;
+    let url: string | null = null;
+
+    if (uploadedFiles.length > 0) {
+      const file = uploadedFiles[0];
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      if (['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico'].includes(ext)) {
+        url = URL.createObjectURL(file);
+        if (active) {
+          setThumbnailUrl(url);
+          setThumbLoadError(false);
+        }
+      }
+    } else {
+      setThumbnailUrl(null);
+      setThumbLoadError(false);
+    }
+
+    return () => {
+      active = false;
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [uploadedFiles]);
 
   const isPdfMerge =
     uploadedFiles.length > 0 &&
@@ -137,6 +166,8 @@ function Dropzone({
         'image/jpeg',
         'image/webp',
         'image/bmp',
+        'image/x-ms-bmp',
+        'image/x-bmp',
         'image/x-icon',
         'image/vnd.microsoft.icon',
         'image/gif',
@@ -157,7 +188,38 @@ function Dropzone({
       ],
     };
 
+    const sanitizedFiles: File[] = [];
     for (const f of fileList) {
+      let currentFile = f;
+      const ext = f.name.split('.').pop()?.toLowerCase() || '';
+      if (ext === 'bmp') {
+        try {
+          const headerSlice = await f.slice(0, 2).arrayBuffer();
+          const bytes = new Uint8Array(headerSlice);
+          if (bytes[0] === 0x4d && bytes[1] === 0x42) {
+            // Auto-heal inverted legacy header ("MB" -> "BM")
+            const repairedBlob = new Blob(
+              [new Uint8Array([0x42, 0x4d]), f.slice(2)],
+              { type: 'image/bmp' }
+            );
+            currentFile = new File([repairedBlob], f.name, {
+              type: 'image/bmp',
+              lastModified: f.lastModified,
+            });
+          } else if (f.type !== 'image/bmp') {
+            currentFile = new File([f], f.name, {
+              type: 'image/bmp',
+              lastModified: f.lastModified,
+            });
+          }
+        } catch {
+          // Keep original file if slice fails
+        }
+      }
+      sanitizedFiles.push(currentFile);
+    }
+
+    for (const f of sanitizedFiles) {
       const result = await FileValidator.validate(f, config);
       if (!result.isValid) {
         alert(`Invalid file (${f.name}): ${result.error}`);
@@ -165,7 +227,9 @@ function Dropzone({
       }
     }
 
-    const nextFiles = append ? [...uploadedFiles, ...fileList] : fileList;
+    const nextFiles = append
+      ? [...uploadedFiles, ...sanitizedFiles]
+      : sanitizedFiles;
     setUploadedFiles(nextFiles);
 
     const allPdfs = nextFiles.every((f) =>
@@ -342,15 +406,29 @@ function Dropzone({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        group relative cursor-pointer rounded-2xl border-2 border-dashed p-8
+        group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-8
         transition-all duration-200 ease-in-out
         ${
           isDragging
             ? 'border-indigo-600 bg-indigo-50 ring-4 ring-indigo-50'
-            : 'border-slate-300 bg-white hover:border-slate-400'
+            : thumbnailUrl && !thumbLoadError
+              ? 'border-indigo-300 bg-slate-900/5 shadow-xs'
+              : 'border-slate-300 bg-white hover:border-slate-400'
         }
       `}
     >
+      {thumbnailUrl && !thumbLoadError && (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
+          <img
+            src={thumbnailUrl}
+            alt=""
+            aria-hidden="true"
+            className="size-full object-cover blur-2xl opacity-20 scale-110 transition-opacity duration-300"
+          />
+          <div className="absolute inset-0 bg-white/75 backdrop-blur-xs" />
+        </div>
+      )}
+
       <input
         type="file"
         multiple
@@ -368,7 +446,7 @@ function Dropzone({
       />
 
       {uploadedFiles.length === 0 ? (
-        <div className="flex flex-col items-center text-center">
+        <div className="relative z-10 flex flex-col items-center text-center">
           <div
             className={`
             mb-4 rounded-full p-4 transition-colors duration-200
@@ -394,7 +472,7 @@ function Dropzone({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center text-center py-2">
+        <div className="relative z-10 flex flex-col items-center text-center py-2">
           {isPdfMerge ? (
             <div className="w-full max-w-md mb-6">
               <div className="flex items-center justify-between mb-3">
@@ -434,7 +512,23 @@ function Dropzone({
             </div>
           ) : (
             <div className="mb-6">
-              <p className="text-sm font-medium text-slate-900 mb-1">
+              {thumbnailUrl && !thumbLoadError && (
+                <div className="mb-4 flex justify-center">
+                  <div className="group/thumb relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 p-1.5 shadow-md transition duration-200 hover:scale-102">
+                    <img
+                      src={thumbnailUrl}
+                      alt={uploadedFiles[0].name}
+                      onError={() => setThumbLoadError(true)}
+                      className="max-h-48 w-auto max-w-full rounded-lg object-contain"
+                    />
+                    <div className="absolute bottom-2.5 right-2.5 rounded-md bg-slate-900/75 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs backdrop-blur-xs">
+                      {uploadedFiles[0].name.split('.').pop()?.toUpperCase()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-sm font-semibold text-slate-900 mb-1">
                 {uploadedFiles[0].name}
               </p>
               <p className="text-xs text-slate-500 mb-4">
@@ -442,11 +536,13 @@ function Dropzone({
               </p>
 
               <div className="flex items-center justify-center gap-3">
-                <label className="text-sm text-slate-600">Konversi ke:</label>
+                <label className="text-sm font-medium text-slate-700">
+                  Konversi ke:
+                </label>
                 <select
                   value={selectedFormat}
                   onChange={(e) => setSelectedFormat(e.target.value)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-600"
                 >
                   {availableFormats.map((format) => (
                     <option key={format} value={format}>
