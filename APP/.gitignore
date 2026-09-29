@@ -1,6 +1,39 @@
+# Dependencies
 node_modules/
+server/node_modules/
+
+# Production Build Outputs
 dist/
+dist-ssr/
+server/dist/
+*.local
+
+# Environment Variables (Secrets)
 .env
 .env.*
 !.env.example
-.claude
+server/.env
+server/.env.*
+!server/.env.example
+server/secret/.env
+
+# Editor & OS files
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary and Log files
+tmp/
+temp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
