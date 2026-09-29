@@ -653,35 +653,40 @@ function Footer() {
               <a
                 aria-label="Facebook"
                 className="text-slate-400 transition hover:text-indigo-600"
-                href="#facebook"
+                href="https://www.facebook.com/profile.php?id=100085051790734&locale=id_ID"
+                target='_blank' rel='noopener noreferrer'
               >
                 <Icon name="facebook" />
               </a>
               <a
                 aria-label="Instagram"
                 className="text-slate-400 transition hover:text-indigo-600"
-                href="#instagram"
+                href="https://www.instagram.com/nanang_788/"
+                target='_blank' rel='noopener noreferrer'
               >
                 <Icon name="instagram" />
               </a>
               <a
                 aria-label="Twitter"
                 className="text-slate-400 transition hover:text-indigo-600"
-                href="#twitter"
+                href="https://x.com/Sky_Clover0"
+                target='_blank' rel='noopener noreferrer'
               >
                 <Icon name="x" />
               </a>
               <a
                 aria-label="YouTube"
                 className="text-slate-400 transition hover:text-indigo-600"
-                href="#youtube"
+                href="https://www.youtube.com/@SkeldStation"
+                target='_blank' rel='noopener noreferrer'
               >
                 <Icon name="youtube" />
               </a>
               <a
                 aria-label="GitHub"
                 className="text-slate-400 transition hover:text-indigo-600"
-                href="#github"
+                href="https://github.com/AMillionDriver"
+                target='_blank' rel='noopener noreferrer'
               >
                 <Icon name="github" />
               </a>

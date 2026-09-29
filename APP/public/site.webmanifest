@@ -1,0 +1,17 @@
+{
+  "name": "Mungil Converter",
+  "short_name": "Mungil",
+  "description": "Konversi file dan gambar cepat, gratis, dan aman langsung di browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/asset/icon_mungil.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

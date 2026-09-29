@@ -1,0 +1,9 @@
+# robots.txt for Mungil Converter
+User-agent: *
+Allow: /
+
+# Disallow API or backend fallback crawlers if any
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://mungil.my.id/sitemap.xml
