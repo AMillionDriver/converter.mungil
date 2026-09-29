@@ -44,8 +44,8 @@ export function MetadataDiffModal({
               Konfirmasi Perubahan Metadata
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              Data metadata berikut telah dimodifikasi atau dibersihkan dari file
-              asli.
+              Data metadata berikut telah dimodifikasi atau dibersihkan dari
+              file asli.
             </p>
           </div>
           <button
@@ -107,7 +107,10 @@ export function MetadataDiffModal({
                       )}
                     </div>
                   </td>
-                  <td className="px-3.5 py-2.5 text-slate-500 font-mono text-[11px] truncate max-w-[120px]" title={diff.before}>
+                  <td
+                    className="px-3.5 py-2.5 text-slate-500 font-mono text-[11px] truncate max-w-[120px]"
+                    title={diff.before}
+                  >
                     {diff.before}
                   </td>
                   <td

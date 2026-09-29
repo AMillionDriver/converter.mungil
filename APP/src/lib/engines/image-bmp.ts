@@ -1,7 +1,14 @@
 import type { ConversionOptions } from '../engine-types';
 
 export const engineId = 'image:png:bmp';
-export const supportedConversions = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+export const supportedConversions = [
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'gif',
+  'bmp',
+];
 
 /**
  * Converts an image file to standard Windows 24-bit uncompressed BMP format.

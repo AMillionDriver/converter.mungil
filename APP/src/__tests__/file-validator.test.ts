@@ -109,9 +109,11 @@ describe('FileValidator - Magic Number & Security Verification', () => {
   });
 
   it('should reject disallowed extensions', async () => {
-    const file = createMockFile('malicious.exe', 'application/x-msdownload', [
-      0x4d, 0x5a,
-    ]);
+    const file = createMockFile(
+      'malicious.exe',
+      'application/x-msdownload',
+      [0x4d, 0x5a]
+    );
     const result = await FileValidator.validate(file, standardConfig);
     expect(result.isValid).toBe(false);
     expect(result.error).toContain('is not supported');

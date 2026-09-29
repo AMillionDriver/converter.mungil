@@ -99,6 +99,31 @@ export function MetadataSideMenu({
     useState<string>('');
   const [selectedDevicePreset, setSelectedDevicePreset] = useState<string>('');
   const [isLocating, setIsLocating] = useState(false);
+  const [detectedLocation, setDetectedLocation] = useState<{
+    name: string;
+    lat: number;
+    long: number;
+  } | null>(null);
+
+  const getDateTimeLocalValue = (val: string | Date | undefined): string => {
+    if (!val) return '';
+    if (val instanceof Date) {
+      const y = val.getFullYear();
+      const m = String(val.getMonth() + 1).padStart(2, '0');
+      const d = String(val.getDate()).padStart(2, '0');
+      const hh = String(val.getHours()).padStart(2, '0');
+      const mm = String(val.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${d}T${hh}:${mm}`;
+    }
+    const str = String(val).trim();
+    if (str.includes('T')) {
+      return str.slice(0, 16);
+    }
+    const parts = str.replace(' ', 'T').split('T');
+    const dateParts = parts[0].replace(/:/g, '-');
+    const timeParts = (parts[1] || '00:00').slice(0, 5);
+    return `${dateParts}T${timeParts}`;
+  };
 
   useEffect(() => {
     const matchDevice = DEVICE_PRESETS.find(
@@ -118,7 +143,9 @@ export function MetadataSideMenu({
       editedExif.GPSLatitude !== undefined ? String(editedExif.GPSLatitude) : ''
     );
     setLongInput(
-      editedExif.GPSLongitude !== undefined ? String(editedExif.GPSLongitude) : ''
+      editedExif.GPSLongitude !== undefined
+        ? String(editedExif.GPSLongitude)
+        : ''
     );
     const matching = LOCATION_PRESETS.find(
       (p) =>
@@ -130,12 +157,20 @@ export function MetadataSideMenu({
     if (matching) {
       setSelectedLocationPreset(matching.name);
     } else if (
+      detectedLocation &&
+      typeof editedExif.GPSLatitude === 'number' &&
+      typeof editedExif.GPSLongitude === 'number' &&
+      Math.abs(detectedLocation.lat - editedExif.GPSLatitude) < 0.0001 &&
+      Math.abs(detectedLocation.long - editedExif.GPSLongitude) < 0.0001
+    ) {
+      setSelectedLocationPreset(detectedLocation.name);
+    } else if (
       editedExif.GPSLatitude === undefined &&
       editedExif.GPSLongitude === undefined
     ) {
       setSelectedLocationPreset('');
     }
-  }, [editedExif.GPSLatitude, editedExif.GPSLongitude]);
+  }, [editedExif.GPSLatitude, editedExif.GPSLongitude, detectedLocation]);
 
   if (isLoading) {
     return (
@@ -241,25 +276,66 @@ export function MetadataSideMenu({
     }
     setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const lat = Number(pos.coords.latitude.toFixed(6));
         const long = Number(pos.coords.longitude.toFixed(6));
         setLatInput(String(lat));
         setLongInput(String(long));
-        setSelectedLocationPreset('Lokasi Perangkat Anda');
         onUpdateCoordinates(lat, long);
+
+        let placeName = `Lokasi Terdeteksi (${lat.toFixed(3)}, ${long.toFixed(3)})`;
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${long}`,
+            {
+              headers: {
+                'Accept-Language': 'id,en',
+              },
+            }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const addr = data.address || {};
+            const city =
+              addr.city ||
+              addr.town ||
+              addr.municipality ||
+              addr.county ||
+              addr.city_district ||
+              '';
+            const state = addr.state || '';
+            const country = addr.country || '';
+            const parts = [city, state || country].filter(Boolean);
+            if (parts.length > 0) {
+              placeName = parts.join(', ');
+            }
+          }
+        } catch {
+          // Graceful fallback
+        }
+
+        setDetectedLocation({ name: placeName, lat, long });
+        setSelectedLocationPreset(placeName);
         setIsLocating(false);
       },
       (err) => {
         setIsLocating(false);
         alert(`Gagal mendeteksi lokasi: ${err.message}`);
       },
-      { timeout: 10000 }
+      { timeout: 10000, enableHighAccuracy: true }
     );
   };
 
   const handleSelectPreset = (e: ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
+    if (detectedLocation && val === detectedLocation.name) {
+      setSelectedLocationPreset(detectedLocation.name);
+      setLatInput(String(detectedLocation.lat));
+      setLongInput(String(detectedLocation.long));
+      onUpdateCoordinates(detectedLocation.lat, detectedLocation.long);
+      return;
+    }
+
     const selected = LOCATION_PRESETS.find((p) => p.name === val);
     if (selected) {
       setSelectedLocationPreset(selected.name);
@@ -451,7 +527,93 @@ export function MetadataSideMenu({
         </div>
       </div>
 
-      {/* 3. Privasi & Lokasi GPS Kustom */}
+      {/* 3. Waktu & Tanggal Pengambilan Foto (DateTimeOriginal) */}
+      <div className="space-y-2.5 border-t border-slate-100 pt-3">
+        <div className="flex items-center justify-between">
+          <span className="font-semibold uppercase tracking-wider text-slate-400 text-[10px]">
+            Waktu Pengambilan Foto
+          </span>
+          {editedExif.DateTimeOriginal ? (
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 border border-indigo-200">
+              Kustom
+            </span>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 border border-slate-200">
+              Standar
+            </span>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-medium text-slate-600 mb-1">
+            Tanggal & Jam (DateTimeOriginal)
+          </label>
+          <input
+            type="datetime-local"
+            value={getDateTimeLocalValue(editedExif.DateTimeOriginal)}
+            onChange={(e) => onUpdateField('DateTimeOriginal', e.target.value)}
+            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 transition focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+
+        {/* Quick Date Presets */}
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          <button
+            type="button"
+            onClick={() => {
+              const now = new Date();
+              const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+              onUpdateField('DateTimeOriginal', iso);
+            }}
+            className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-100 hover:text-indigo-600 transition active:scale-95"
+          >
+            Sekarang
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onUpdateField('DateTimeOriginal', '4000-01-01T12:00')
+            }
+            className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 transition active:scale-95"
+          >
+            Tahun 4000 (Futuristik)
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onUpdateField('DateTimeOriginal', '2000-01-01T00:00')
+            }
+            className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-100 transition active:scale-95"
+          >
+            Y2K (2000)
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onUpdateField('DateTimeOriginal', '1990-06-15T08:00')
+            }
+            className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-700 hover:bg-slate-100 transition active:scale-95"
+          >
+            Vintage (1990)
+          </button>
+          {editedExif.DateTimeOriginal && (
+            <button
+              type="button"
+              onClick={() => onUpdateField('DateTimeOriginal', '')}
+              className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-medium text-rose-600 hover:bg-rose-100 transition active:scale-95"
+            >
+              Hapus Tanggal
+            </button>
+          )}
+        </div>
+
+        <p className="text-[10px] text-slate-400 leading-relaxed">
+          Tanggal ini tertanam di EXIF file dan akan terbaca oleh sistem
+          Windows, macOS, Google Photos, dan kamera.
+        </p>
+      </div>
+
+      {/* 4. Privasi & Lokasi GPS Kustom */}
       <div className="space-y-2.5 border-t border-slate-100 pt-3">
         <div className="flex items-center justify-between">
           <span className="font-semibold uppercase tracking-wider text-slate-400 text-[10px]">
@@ -501,7 +663,7 @@ export function MetadataSideMenu({
         {/* Preset Lokasi Dropdown */}
         <div>
           <label className="block text-[10px] font-medium text-slate-600 mb-1">
-            Pilih Kota Populer
+            Pilih Kota Populer / Terdeteksi
           </label>
           <select
             value={selectedLocationPreset}
@@ -509,6 +671,11 @@ export function MetadataSideMenu({
             className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           >
             <option value="">-- Pilih Preset Lokasi --</option>
+            {detectedLocation && (
+              <option value={detectedLocation.name}>
+                📍 {detectedLocation.name} (Lokasi Terdeteksi)
+              </option>
+            )}
             {LOCATION_PRESETS.map((preset) => (
               <option key={preset.name} value={preset.name}>
                 {preset.name} ({preset.lat}, {preset.long})
@@ -539,7 +706,10 @@ export function MetadataSideMenu({
               />
             </svg>
             <span className="font-semibold truncate">
-              Lokasi Terpilih: {selectedLocationPreset}
+              {detectedLocation &&
+              selectedLocationPreset === detectedLocation.name
+                ? `Lokasi Terdeteksi: ${selectedLocationPreset}`
+                : `Lokasi Terpilih: ${selectedLocationPreset}`}
             </span>
           </div>
         )}
@@ -566,7 +736,7 @@ export function MetadataSideMenu({
                 d="M12 2v3m0 14v3m10-10h-3M5 12H2"
               />
             </svg>
-            <span>{isLocating ? 'Mencari...' : 'Lokasi Saya'}</span>
+            <span>{isLocating ? 'Mendeteksi...' : 'Lokasi Saya'}</span>
           </button>
 
           {hasGps && (

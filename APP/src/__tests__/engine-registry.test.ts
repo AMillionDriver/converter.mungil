@@ -2,15 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { engineRegistry } from '../lib/engine-registry';
 
 describe('EngineRegistry - Routing & Zero-Unknown Assurance', () => {
-  const supportedInputs = [
-    'png',
-    'jpg',
-    'jpeg',
-    'webp',
-    'bmp',
-    'ico',
-    'gif',
-  ];
+  const supportedInputs = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico', 'gif'];
 
   it('should provide output formats for all supported input image extensions', () => {
     supportedInputs.forEach((ext) => {
@@ -27,7 +19,10 @@ describe('EngineRegistry - Routing & Zero-Unknown Assurance', () => {
       const outputs = engineRegistry.getSupportedOutputFormats(input);
       outputs.forEach((output) => {
         const engine = engineRegistry.resolveEngine(input, output);
-        expect(engine, `Engine must resolve for ${input} -> ${output}`).not.toBeNull();
+        expect(
+          engine,
+          `Engine must resolve for ${input} -> ${output}`
+        ).not.toBeNull();
         if (engine) {
           expect(
             engine.id.startsWith('unknown:'),
@@ -64,5 +59,16 @@ describe('EngineRegistry - Routing & Zero-Unknown Assurance', () => {
 
     const pngEngine = engineRegistry.resolveEngine('ico', 'png');
     expect(pngEngine?.id).toBe('image:ico:png');
+  });
+
+  it('should correctly resolve same-format compression routes (Keep Current mode)', () => {
+    const jpegEngine = engineRegistry.resolveEngine('jpeg', 'jpeg');
+    expect(jpegEngine?.id).toBe('image:jpeg:jpeg');
+
+    const pngEngine = engineRegistry.resolveEngine('png', 'png');
+    expect(pngEngine?.id).toBe('image:png:png');
+
+    const webpEngine = engineRegistry.resolveEngine('webp', 'webp');
+    expect(webpEngine?.id).toBe('image:webp:webp');
   });
 });

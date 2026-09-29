@@ -8,6 +8,7 @@ export const supportedConversions = [
   'webp',
   'bmp',
   'gif',
+  'ico',
 ];
 
 /**

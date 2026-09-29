@@ -6,7 +6,7 @@ import type { ConversionOptions } from '../engine-types';
 
 export const engineId = 'image:png:webp';
 
-export const supportedConversions = ['png', 'jpg', 'jpeg'];
+export const supportedConversions = ['png', 'jpg', 'jpeg', 'webp'];
 
 async function decodeImage(file: File): Promise<ImageData> {
   const bitmap = await createImageBitmap(file);

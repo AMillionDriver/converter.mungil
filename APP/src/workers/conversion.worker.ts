@@ -26,6 +26,7 @@ async function loadEngineModule(engineId: string) {
       case 'image:bmp:webp':
       case 'image:ico:webp':
       case 'image:gif:webp':
+      case 'image:webp:webp':
         engineModules[engineId] = await import('../lib/engines/image-webp');
         break;
       case 'image:webp:png':
@@ -34,6 +35,7 @@ async function loadEngineModule(engineId: string) {
       case 'image:bmp:png':
       case 'image:ico:png':
       case 'image:gif:png':
+      case 'image:png:png':
         engineModules[engineId] = await import('../lib/engines/image-png');
         break;
       case 'image:png:jpeg':
@@ -45,6 +47,8 @@ async function loadEngineModule(engineId: string) {
       case 'image:ico:jpeg':
       case 'image:ico:jpg':
       case 'image:gif:jpeg':
+      case 'image:jpeg:jpeg':
+      case 'image:jpg:jpg':
         engineModules[engineId] = await import('../lib/engines/image-jpeg');
         break;
       case 'image:png:pdf':
@@ -60,14 +64,55 @@ async function loadEngineModule(engineId: string) {
       case 'image:jpeg:ico':
       case 'image:webp:ico':
       case 'image:bmp:ico':
+      case 'image:ico:ico':
         engineModules[engineId] = await import('../lib/engines/image-ico');
         break;
       case 'image:png:bmp':
       case 'image:jpg:bmp':
       case 'image:jpeg:bmp':
       case 'image:webp:bmp':
+      case 'image:bmp:bmp':
         engineModules[engineId] = await import('../lib/engines/image-bmp');
         break;
+      case 'document:txt:pdf': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.txtToPdfEngine;
+        break;
+      }
+      case 'document:pdf:txt': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.pdfToTxtEngine;
+        break;
+      }
+      case 'document:txt:docx': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.txtToDocxEngine;
+        break;
+      }
+      case 'document:docx:txt': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.docxToTxtEngine;
+        break;
+      }
+      case 'document:csv:json': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.csvToJsonEngine;
+        break;
+      }
+      case 'document:json:csv': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.jsonToCsvEngine;
+        break;
+      }
+      case 'document:pdf:pdf':
+      case 'document:docx:docx':
+      case 'document:txt:txt':
+      case 'document:csv:csv':
+      case 'document:json:json': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.identityEngine;
+        break;
+      }
       default:
         throw new Error(`Unknown engine: ${engineId}`);
     }

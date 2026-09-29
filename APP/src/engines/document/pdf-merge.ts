@@ -2,7 +2,7 @@ import { PDFDocument } from 'pdf-lib';
 import { EngineLogger } from '../shared/EngineLogger';
 
 export interface PdfOperation {
-  type: 'merge' | 'split' | 'rotate' | 'image-to-pdf';
+  type: 'merge' | 'split' | 'rotate' | 'image-to-pdf' | 'compress';
   files: File[];
   options: {
     pages?: number[];
@@ -45,6 +45,28 @@ export class PdfEngine {
             height: image.height,
           });
         }
+      } else if (op.type === 'compress') {
+        if (op.files.length === 0) {
+          throw new Error('Tidak ada file PDF yang diberikan untuk kompresi');
+        }
+        const bytes = await op.files[0].arrayBuffer();
+        const loadedDoc = await PDFDocument.load(bytes);
+        const pdfBytes = await loadedDoc.save({ useObjectStreams: true });
+        const blob = new Blob([pdfBytes as unknown as BlobPart], {
+          type: 'application/pdf',
+        });
+
+        EngineLogger.log({
+          engineId: 'pdf-lib',
+          operation: 'compress',
+          status: 'success',
+          duration: performance.now() - startTime,
+          inputSize: op.files[0].size,
+          outputSize: blob.size,
+          timestamp: Date.now(),
+        });
+
+        return blob;
       } else {
         throw new Error(
           `Operation ${op.type} not yet implemented in PdfEngine`

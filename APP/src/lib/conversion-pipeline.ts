@@ -58,6 +58,59 @@ const engineMap: Record<string, () => Promise<EngineModule>> = {
   'image:gif:webp': () => import('./engines/image-webp'),
   'image:gif:png': () => import('./engines/image-png'),
   'image:gif:jpeg': () => import('./engines/image-jpeg'),
+  // Same-format Re-encoding / Compression routes
+  'image:jpeg:jpeg': () => import('./engines/image-jpeg'),
+  'image:jpg:jpg': () => import('./engines/image-jpeg'),
+  'image:png:png': () => import('./engines/image-png'),
+  'image:webp:webp': () => import('./engines/image-webp'),
+  'image:bmp:bmp': () => import('./engines/image-bmp'),
+  'image:ico:ico': () => import('./engines/image-ico'),
+  // Document & Data conversions
+  'document:txt:pdf': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.txtToPdfEngine.runConversion,
+    })),
+  'document:pdf:txt': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.pdfToTxtEngine.runConversion,
+    })),
+  'document:txt:docx': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.txtToDocxEngine.runConversion,
+    })),
+  'document:docx:txt': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.docxToTxtEngine.runConversion,
+    })),
+  'document:csv:json': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.csvToJsonEngine.runConversion,
+    })),
+  'document:json:csv': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.jsonToCsvEngine.runConversion,
+    })),
+  // Document same-format routes
+  'document:pdf:pdf': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.identityEngine.runConversion,
+    })),
+  'document:docx:docx': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.identityEngine.runConversion,
+    })),
+  'document:txt:txt': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.identityEngine.runConversion,
+    })),
+  'document:csv:csv': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.identityEngine.runConversion,
+    })),
+  'document:json:json': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.identityEngine.runConversion,
+    })),
 };
 
 export class ConversionPipeline {
@@ -91,7 +144,9 @@ export class ConversionPipeline {
         // Delegate to the engine module's runConversion
         const loader = engineMap[engineId];
         if (!loader) {
-          throw new Error(`Engine implementation module not found for ${engineId}`);
+          throw new Error(
+            `Engine implementation module not found for ${engineId}`
+          );
         }
         const module = await loader();
         return module.runConversion(file, options);

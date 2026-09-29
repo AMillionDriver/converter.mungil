@@ -27,12 +27,14 @@
     "fflate": "^0.8.3",
     "idb": "^8.0.3",
     "pdf-lib": "^1.17.1",
+    "piexifjs": "^1.0.6",
     "react": "latest",
     "react-dom": "latest",
     "vite": "latest"
   },
   "devDependencies": {
     "@eslint/js": "^8.57.1",
+    "@types/piexifjs": "^1.0.0",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "concurrently": "^10.0.5",

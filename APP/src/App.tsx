@@ -7,14 +7,21 @@ import { FileValidator } from './lib/file-validator';
 import { ConversionPipeline } from './lib/conversion-pipeline';
 import { DownloadManager } from './lib/download-manager';
 import { MetadataSideMenu } from './components/MetadataSideMenu';
+import { DocumentMetadataSideMenu } from './components/DocumentMetadataSideMenu';
 import { MetadataDiffModal } from './components/MetadataDiffModal';
 import { AdBanner } from './components/AdBanner';
+import { FilePreviewModal } from './components/FilePreviewModal';
 import {
   ExifEngine,
   type ExifData,
   type ExifResult,
   type MetadataDiffItem,
 } from './engines/image/exif-engine';
+import {
+  DocumentMetadataEngine,
+  type DocumentMetadata,
+  type DocumentMetadataResult,
+} from './engines/document/document-metadata-engine';
 
 type IconName =
   | 'chevronDown'
@@ -98,6 +105,14 @@ interface DropzoneProps {
   setUploadedFiles: React.Dispatch<React.SetStateAction<File[]>>;
   activeMetadata: ExifResult | null;
   editedExif: ExifData;
+  activeDocMetadata?: DocumentMetadataResult | null;
+  editedDocMetadata?: DocumentMetadata;
+  keepCurrent: boolean;
+  setKeepCurrent: React.Dispatch<React.SetStateAction<boolean>>;
+  enableCompression: boolean;
+  setEnableCompression: React.Dispatch<React.SetStateAction<boolean>>;
+  compressionQuality: number;
+  setCompressionQuality: React.Dispatch<React.SetStateAction<number>>;
   onInterceptDiff: (
     diffs: MetadataDiffItem[],
     execute: () => Promise<void>
@@ -109,6 +124,14 @@ function Dropzone({
   setUploadedFiles,
   activeMetadata,
   editedExif,
+  activeDocMetadata,
+  editedDocMetadata,
+  keepCurrent,
+  setKeepCurrent,
+  enableCompression,
+  setEnableCompression,
+  compressionQuality,
+  setCompressionQuality,
   onInterceptDiff,
 }: DropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -117,6 +140,7 @@ function Dropzone({
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [selectedFormat, setSelectedFormat] = useState<string>('');
   const [isMerging, setIsMerging] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const { runConversion, status, progress } = useConversion();
@@ -149,7 +173,7 @@ function Dropzone({
   }, [uploadedFiles]);
 
   const isPdfMerge =
-    uploadedFiles.length > 0 &&
+    uploadedFiles.length > 1 &&
     uploadedFiles.every((f) => f.name.toLowerCase().endsWith('.pdf'));
 
   const handleFiles = async (
@@ -173,6 +197,10 @@ function Dropzone({
         'image/vnd.microsoft.icon',
         'image/gif',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+        'text/csv',
+        'application/json',
+        'application/vnd.ms-excel',
         'video/mp4',
       ],
       allowedExtensions: [
@@ -185,6 +213,9 @@ function Dropzone({
         'ico',
         'gif',
         'docx',
+        'txt',
+        'csv',
+        'json',
         'mp4',
       ],
     };
@@ -237,14 +268,28 @@ function Dropzone({
       f.name.toLowerCase().endsWith('.pdf')
     );
     if (allPdfs) {
-      setAvailableFormats(['merge']);
-      setSelectedFormat('merge');
+      if (nextFiles.length > 1) {
+        setAvailableFormats(['merge']);
+        setSelectedFormat('merge');
+      } else {
+        setAvailableFormats(['pdf']);
+        setSelectedFormat('pdf');
+      }
       return;
     }
 
     if (nextFiles.length === 1) {
       const ext = nextFiles[0].name.split('.').pop()?.toLowerCase() || '';
-      const formats = engineRegistry.getSupportedOutputFormats(ext);
+      const allOutputs = engineRegistry.getSupportedOutputFormats(ext);
+      // Place cross-formats first, but keep current format available so users can modify metadata on same format
+      const crossFormats = allOutputs.filter(
+        (f) =>
+          f !== ext &&
+          !(ext === 'jpg' && f === 'jpeg') &&
+          !(ext === 'jpeg' && f === 'jpg')
+      );
+      const formats =
+        crossFormats.length > 0 ? [...crossFormats, ext] : allOutputs;
       if (formats.length === 0) {
         alert(`No conversion options available for .${ext} files`);
         setUploadedFiles([]);
@@ -272,6 +317,8 @@ function Dropzone({
     if (updated.length === 0) {
       setAvailableFormats([]);
       setSelectedFormat('');
+      setKeepCurrent(false);
+      setEnableCompression(false);
     }
   };
 
@@ -340,31 +387,108 @@ function Dropzone({
       const targetFile = uploadedFiles[0];
       try {
         const extension = targetFile.name.split('.').pop()?.toLowerCase() || '';
-        const engine = await ConversionPipeline.resolveAndLoad(
-          extension,
-          selectedFormat
-        );
+        const effectiveOutputFormat = keepCurrent ? extension : selectedFormat;
 
-        const outputBlob = await runConversion(engine.id, targetFile);
-        const filename = DownloadManager.generateFilename(
-          targetFile.name,
-          selectedFormat
-        );
-        let mimeType = `image/${selectedFormat}`;
-        if (selectedFormat === 'pdf') {
-          mimeType = 'application/pdf';
-        } else if (selectedFormat === 'ico') {
-          mimeType = 'image/x-icon';
-        } else if (selectedFormat === 'bmp') {
-          mimeType = 'image/bmp';
+        // If it's a PDF and (keepCurrent or effectiveOutputFormat is pdf)
+        if (extension === 'pdf' && effectiveOutputFormat === 'pdf') {
+          setIsMerging(true);
+          try {
+            const { PdfEngine } = await import('./engines/document/pdf-merge');
+            const outputBlob = await PdfEngine.process({
+              type: 'compress',
+              files: [targetFile],
+              options: {},
+            });
+            const filename = enableCompression
+              ? `compressed-${targetFile.name}`
+              : targetFile.name;
+            await DownloadManager.download(outputBlob, {
+              filename,
+              mimeType: 'application/pdf',
+            });
+            setUploadedFiles([]);
+            setKeepCurrent(false);
+            setEnableCompression(false);
+          } finally {
+            setIsMerging(false);
+          }
+          return;
         }
 
-        await DownloadManager.download(outputBlob, {
+        const engine = await ConversionPipeline.resolveAndLoad(
+          extension,
+          effectiveOutputFormat
+        );
+
+        const options: Record<string, unknown> = {};
+        if (enableCompression) {
+          options.quality = compressionQuality;
+        }
+
+        const outputBlob = await runConversion(engine.id, targetFile, options);
+        const filename = DownloadManager.generateFilename(
+          targetFile.name,
+          effectiveOutputFormat
+        );
+        let mimeType = `image/${effectiveOutputFormat}`;
+        if (effectiveOutputFormat === 'pdf') {
+          mimeType = 'application/pdf';
+        } else if (effectiveOutputFormat === 'docx') {
+          mimeType =
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        } else if (effectiveOutputFormat === 'txt') {
+          mimeType = 'text/plain;charset=utf-8';
+        } else if (effectiveOutputFormat === 'csv') {
+          mimeType = 'text/csv;charset=utf-8';
+        } else if (effectiveOutputFormat === 'json') {
+          mimeType = 'application/json';
+        } else if (effectiveOutputFormat === 'ico') {
+          mimeType = 'image/x-icon';
+        } else if (effectiveOutputFormat === 'bmp') {
+          mimeType = 'image/bmp';
+        } else if (
+          effectiveOutputFormat === 'jpg' ||
+          effectiveOutputFormat === 'jpeg'
+        ) {
+          mimeType = 'image/jpeg';
+        }
+
+        let finalBlob = outputBlob;
+        if (
+          !keepCurrent &&
+          (mimeType === 'image/jpeg' || mimeType === 'image/jpg')
+        ) {
+          try {
+            finalBlob = await ExifEngine.writeExif(outputBlob, editedExif);
+          } catch (exifErr) {
+            console.warn(
+              '[ExifEngine] Gagal menginjeksi EXIF kustom:',
+              exifErr
+            );
+          }
+        } else if (!keepCurrent && activeDocMetadata && editedDocMetadata) {
+          try {
+            finalBlob = await DocumentMetadataEngine.writeMetadata(
+              outputBlob,
+              editedDocMetadata,
+              effectiveOutputFormat
+            );
+          } catch (docErr) {
+            console.warn(
+              '[DocumentMetadataEngine] Gagal menulis metadata dokumen:',
+              docErr
+            );
+          }
+        }
+
+        await DownloadManager.download(finalBlob, {
           filename,
           mimeType,
         });
 
         setUploadedFiles([]);
+        setKeepCurrent(false);
+        setEnableCompression(false);
       } catch (err) {
         alert(
           `Conversion error: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -372,7 +496,8 @@ function Dropzone({
       }
     };
 
-    if (activeMetadata) {
+    // If keepCurrent is active, bypass metadata diff modal since original metadata is kept
+    if (activeMetadata && !keepCurrent) {
       const diffs = ExifEngine.computeDiff(activeMetadata.exif, editedExif);
       if (diffs.length > 0) {
         onInterceptDiff(diffs, executeSingle);
@@ -495,13 +620,22 @@ function Dropzone({
                     className="flex items-center justify-between py-1.5 px-2"
                   >
                     <span className="truncate pr-2 font-medium">{f.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(i)}
-                      className="text-rose-500 hover:text-rose-700 font-medium ml-2 shrink-0"
-                    >
-                      Hapus
-                    </button>
+                    <div className="flex items-center gap-2 ml-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTarget(f)}
+                        className="text-indigo-600 hover:text-indigo-800 font-medium transition"
+                      >
+                        Pratinjau
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(i)}
+                        className="text-rose-500 hover:text-rose-700 font-medium transition"
+                      >
+                        Hapus
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -513,51 +647,215 @@ function Dropzone({
             </div>
           ) : (
             <div className="mb-6">
-              {thumbnailUrl && !thumbLoadError && (
+              {thumbnailUrl && !thumbLoadError ? (
                 <div className="mb-4 flex justify-center">
-                  <div className="group/thumb relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 p-1.5 shadow-md transition duration-200 hover:scale-102">
+                  <div
+                    onClick={() => setPreviewTarget(uploadedFiles[0])}
+                    className="group/thumb relative cursor-pointer overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 p-1.5 shadow-md transition duration-200 hover:scale-102 hover:shadow-lg"
+                    title="Klik untuk melihat pratinjau penuh"
+                  >
                     <img
                       src={thumbnailUrl}
                       alt={uploadedFiles[0].name}
                       onError={() => setThumbLoadError(true)}
                       className="max-h-48 w-auto max-w-full rounded-lg object-contain"
                     />
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/40 opacity-0 transition-opacity duration-200 group-hover/thumb:opacity-100 rounded-lg">
+                      <div className="flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-xs">
+                        <svg
+                          className="size-4 text-indigo-600"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                          />
+                        </svg>
+                        <span>Lihat Pratinjau</span>
+                      </div>
+                    </div>
                     <div className="absolute bottom-2.5 right-2.5 rounded-md bg-slate-900/75 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs backdrop-blur-xs">
                       {uploadedFiles[0].name.split('.').pop()?.toUpperCase()}
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               <p className="text-sm font-semibold text-slate-900 mb-1">
                 {uploadedFiles[0].name}
               </p>
-              <p className="text-xs text-slate-500 mb-4">
-                {(uploadedFiles[0].size / 1024 / 1024).toFixed(2)} MB
-              </p>
-
-              <div className="flex items-center justify-center gap-3">
-                <label className="text-sm font-medium text-slate-700">
-                  Konversi ke:
-                </label>
-                <select
-                  value={selectedFormat}
-                  onChange={(e) => setSelectedFormat(e.target.value)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <span className="text-xs text-slate-500">
+                  {(uploadedFiles[0].size / 1024 / 1024).toFixed(2)} MB
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewTarget(uploadedFiles[0])}
+                  className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition active:scale-95 border border-indigo-100"
                 >
-                  {availableFormats.map((format) => (
-                    <option key={format} value={format}>
-                      {format.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
+                  <svg
+                    className="size-3 text-indigo-600"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                    />
+                  </svg>
+                  <span>Pratinjau File</span>
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Konversi ke:
+                  </label>
+                  <select
+                    disabled={keepCurrent}
+                    value={
+                      keepCurrent
+                        ? uploadedFiles[0].name
+                            .split('.')
+                            .pop()
+                            ?.toLowerCase() || selectedFormat
+                        : selectedFormat
+                    }
+                    onChange={(e) => setSelectedFormat(e.target.value)}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-semibold shadow-xs transition-colors ${
+                      keepCurrent
+                        ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'border-slate-300 bg-white text-slate-800 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600'
+                    }`}
+                  >
+                    {keepCurrent ? (
+                      <option
+                        value={
+                          uploadedFiles[0].name
+                            .split('.')
+                            .pop()
+                            ?.toLowerCase() || selectedFormat
+                        }
+                      >
+                        {(
+                          uploadedFiles[0].name.split('.').pop() ||
+                          selectedFormat
+                        ).toUpperCase()}{' '}
+                        (Asli)
+                      </option>
+                    ) : (
+                      availableFormats.map((format) => (
+                        <option key={format} value={format}>
+                          {format.toUpperCase()}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-slate-600 hover:text-slate-900 transition">
+                  <input
+                    type="checkbox"
+                    checked={keepCurrent}
+                    onChange={(e) => setKeepCurrent(e.target.checked)}
+                    className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>
+                    Pertahankan format asli{' '}
+                    <span className="text-slate-400 font-normal">
+                      (Keep Current)
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Box Kompres Ukuran File */}
+              <div className="mt-4 w-full max-w-md mx-auto rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-left transition-all">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={enableCompression}
+                      onChange={(e) => setEnableCompression(e.target.checked)}
+                      className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div>
+                      <span className="text-sm font-semibold text-slate-900">
+                        Kompres Ukuran File
+                      </span>
+                      <p className="text-xs text-slate-500">
+                        Perkecil ukuran tanpa merusak kualitas visual
+                      </p>
+                    </div>
+                  </label>
+                  {enableCompression && (
+                    <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-200">
+                      {compressionQuality}% Kualitas
+                    </span>
+                  )}
+                </div>
+
+                {enableCompression && (
+                  <div className="mt-3 pt-3 border-t border-slate-200/70 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-slate-600">
+                        Level Kompresi:
+                      </span>
+                      <span className="font-semibold text-indigo-600">
+                        {compressionQuality >= 85
+                          ? 'Ringan (Kualitas Maksimal)'
+                          : compressionQuality >= 70
+                            ? 'Seimbang (Rekomendasi Web)'
+                            : 'Ekstrem (Ukuran Terkecil)'}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="40"
+                      max="95"
+                      step="5"
+                      value={compressionQuality}
+                      onChange={(e) =>
+                        setCompressionQuality(Number(e.target.value))
+                      }
+                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                    <div className="flex justify-between text-[11px] text-slate-400">
+                      <span>Ekstrem (40%)</span>
+                      <span>Seimbang (75%)</span>
+                      <span>Maksimal (95%)</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           <div className="flex gap-3">
             <button
-              onClick={() => setUploadedFiles([])}
+              onClick={() => {
+                setUploadedFiles([]);
+                setKeepCurrent(false);
+                setEnableCompression(false);
+              }}
               className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
             >
               Batal
@@ -575,10 +873,22 @@ function Dropzone({
                 ? `Memproses ${progress > 0 ? `${progress}%` : '...'}`
                 : isPdfMerge
                   ? 'Gabungkan PDF'
-                  : 'Konversi Sekarang'}
+                  : keepCurrent && enableCompression
+                    ? 'Kompres File Sekarang'
+                    : keepCurrent
+                      ? 'Simpan File Asli'
+                      : 'Konversi Sekarang'}
             </button>
           </div>
         </div>
+      )}
+
+      {previewTarget && (
+        <FilePreviewModal
+          file={previewTarget}
+          isOpen={Boolean(previewTarget)}
+          onClose={() => setPreviewTarget(null)}
+        />
       )}
     </div>
   );
@@ -655,7 +965,8 @@ function Footer() {
                 aria-label="Facebook"
                 className="text-slate-400 transition hover:text-indigo-600"
                 href="https://www.facebook.com/profile.php?id=100085051790734&locale=id_ID"
-                target='_blank' rel='noopener noreferrer'
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 <Icon name="facebook" />
               </a>
@@ -663,7 +974,8 @@ function Footer() {
                 aria-label="Instagram"
                 className="text-slate-400 transition hover:text-indigo-600"
                 href="https://www.instagram.com/nanang_788/"
-                target='_blank' rel='noopener noreferrer'
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 <Icon name="instagram" />
               </a>
@@ -671,7 +983,8 @@ function Footer() {
                 aria-label="Twitter"
                 className="text-slate-400 transition hover:text-indigo-600"
                 href="https://x.com/Sky_Clover0"
-                target='_blank' rel='noopener noreferrer'
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 <Icon name="x" />
               </a>
@@ -679,7 +992,8 @@ function Footer() {
                 aria-label="YouTube"
                 className="text-slate-400 transition hover:text-indigo-600"
                 href="https://www.youtube.com/@SkeldStation"
-                target='_blank' rel='noopener noreferrer'
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 <Icon name="youtube" />
               </a>
@@ -687,7 +1001,8 @@ function Footer() {
                 aria-label="GitHub"
                 className="text-slate-400 transition hover:text-indigo-600"
                 href="https://github.com/AMillionDriver"
-                target='_blank' rel='noopener noreferrer'
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 <Icon name="github" />
               </a>
@@ -720,6 +1035,11 @@ function App() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [activeMetadata, setActiveMetadata] = useState<ExifResult | null>(null);
   const [editedExif, setEditedExif] = useState<ExifData>({});
+  const [activeDocMetadata, setActiveDocMetadata] =
+    useState<DocumentMetadataResult | null>(null);
+  const [editedDocMetadata, setEditedDocMetadata] = useState<DocumentMetadata>(
+    {}
+  );
   const [isReadingMetadata, setIsReadingMetadata] = useState(false);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
   const [isMobileMetadataOpen, setIsMobileMetadataOpen] = useState(false);
@@ -727,11 +1047,19 @@ function App() {
   const [pendingConvertAction, setPendingConvertAction] = useState<
     (() => Promise<void>) | null
   >(null);
+  const [keepCurrent, setKeepCurrent] = useState(false);
+  const [enableCompression, setEnableCompression] = useState(false);
+  const [compressionQuality, setCompressionQuality] = useState(75);
 
   useEngineRegistry();
   useEngineLoader();
 
   useEffect(() => {
+    if (uploadedFiles.length === 0) {
+      setKeepCurrent(false);
+      setEnableCompression(false);
+    }
+
     if (uploadedFiles.length === 1) {
       const file = uploadedFiles[0];
       const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -750,6 +1078,8 @@ function App() {
           .then((res) => {
             setActiveMetadata(res);
             setEditedExif({ ...res.exif });
+            setActiveDocMetadata(null);
+            setEditedDocMetadata({});
           })
           .catch((err) => {
             console.warn('Gagal membaca EXIF:', err);
@@ -761,9 +1091,32 @@ function App() {
           });
         return;
       }
+
+      const isDoc = ['pdf', 'docx', 'txt', 'csv', 'json'].includes(ext);
+      if (isDoc) {
+        setIsReadingMetadata(true);
+        DocumentMetadataEngine.read(file)
+          .then((res) => {
+            setActiveDocMetadata(res);
+            setEditedDocMetadata({ ...res.metadata });
+            setActiveMetadata(null);
+            setEditedExif({});
+          })
+          .catch((err) => {
+            console.warn('Gagal membaca metadata dokumen:', err);
+            setActiveDocMetadata(null);
+            setEditedDocMetadata({});
+          })
+          .finally(() => {
+            setIsReadingMetadata(false);
+          });
+        return;
+      }
     }
     setActiveMetadata(null);
     setEditedExif({});
+    setActiveDocMetadata(null);
+    setEditedDocMetadata({});
   }, [uploadedFiles]);
 
   const handleUpdateExifField = (key: string, value: string) => {
@@ -836,7 +1189,42 @@ function App() {
 
   const hasMetadataChanges = Boolean(
     activeMetadata &&
-      ExifEngine.computeDiff(activeMetadata.exif, editedExif).length > 0
+    ExifEngine.computeDiff(activeMetadata.exif, editedExif).length > 0
+  );
+
+  const handleUpdateDocField = (
+    key: keyof DocumentMetadata,
+    value: string | Date | undefined
+  ) => {
+    setEditedDocMetadata((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const handleStripAllDocMeta = () => {
+    setEditedDocMetadata({
+      title: '',
+      author: '',
+      subject: '',
+      keywords: '',
+      producer: '',
+      creator: '',
+      creationDate: undefined,
+      modificationDate: undefined,
+    });
+  };
+
+  const handleResetDocMeta = () => {
+    if (activeDocMetadata) {
+      setEditedDocMetadata({ ...activeDocMetadata.metadata });
+    }
+  };
+
+  const hasDocMetadataChanges = Boolean(
+    activeDocMetadata &&
+    JSON.stringify(activeDocMetadata.metadata) !==
+      JSON.stringify(editedDocMetadata)
   );
 
   const handleInterceptDiff = (
@@ -976,22 +1364,104 @@ function App() {
           <div className="grid gap-8 lg:grid-cols-[280px_1fr_280px]">
             {/* Kolom Kiri - Ad Banner / Metadata Side Menu */}
             <aside
-              aria-label={activeMetadata ? 'Metadata Inspector' : 'Iklan kiri'}
+              aria-label={
+                activeMetadata || activeDocMetadata
+                  ? 'Metadata Inspector'
+                  : 'Iklan kiri'
+              }
               className="hidden lg:block w-full max-w-[280px] self-start sticky top-24"
             >
               {activeMetadata ? (
-                <MetadataSideMenu
-                  metadata={activeMetadata}
-                  editedExif={editedExif}
-                  isLoading={isReadingMetadata}
-                  hasChanges={hasMetadataChanges}
-                  onUpdateField={handleUpdateExifField}
-                  onUpdateCoordinates={handleUpdateCoordinates}
-                  onUpdateDevice={handleUpdateDevice}
-                  onRemoveGps={handleRemoveGps}
-                  onStripAll={handleStripAllExif}
-                  onReset={handleResetExif}
-                />
+                <div className="relative">
+                  <MetadataSideMenu
+                    metadata={activeMetadata}
+                    editedExif={editedExif}
+                    isLoading={isReadingMetadata}
+                    hasChanges={hasMetadataChanges}
+                    onUpdateField={handleUpdateExifField}
+                    onUpdateCoordinates={handleUpdateCoordinates}
+                    onUpdateDevice={handleUpdateDevice}
+                    onRemoveGps={handleRemoveGps}
+                    onStripAll={handleStripAllExif}
+                    onReset={handleResetExif}
+                  />
+
+                  {keepCurrent && (
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-2xl bg-slate-100/80 p-6 text-center backdrop-blur-[2px] cursor-not-allowed select-none transition-all duration-200 border border-slate-300/60 shadow-xs">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-200/90 text-slate-600 mb-3 shadow-xs">
+                        <svg
+                          className="size-6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-bold text-slate-800">
+                        Metadata Dikunci
+                      </p>
+                      <span className="mt-1 rounded-full bg-slate-200 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                        Keep Current Aktif
+                      </span>
+                      <p className="mt-2 text-xs text-slate-500 leading-relaxed max-w-[200px]">
+                        Metadata dan EXIF asli file dipertahankan utuh tanpa
+                        perubahan.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : activeDocMetadata ? (
+                <div className="relative">
+                  <DocumentMetadataSideMenu
+                    documentMeta={editedDocMetadata}
+                    onUpdateField={handleUpdateDocField}
+                    onStripAll={handleStripAllDocMeta}
+                    onReset={handleResetDocMeta}
+                    hasChanges={hasDocMetadataChanges}
+                    fileInfo={{
+                      name: uploadedFiles[0]?.name || '',
+                      size: activeDocMetadata.size,
+                      format: activeDocMetadata.format,
+                      pageCount: activeDocMetadata.pageCount,
+                    }}
+                  />
+
+                  {keepCurrent && (
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-2xl bg-slate-100/80 p-6 text-center backdrop-blur-[2px] cursor-not-allowed select-none transition-all duration-200 border border-slate-300/60 shadow-xs">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-200/90 text-slate-600 mb-3 shadow-xs">
+                        <svg
+                          className="size-6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-bold text-slate-800">
+                        Metadata Dikunci
+                      </p>
+                      <span className="mt-1 rounded-full bg-slate-200 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                        Keep Current Aktif
+                      </span>
+                      <p className="mt-2 text-xs text-slate-500 leading-relaxed max-w-[200px]">
+                        Metadata dokumen asli dipertahankan utuh tanpa
+                        perubahan.
+                      </p>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <AdBanner
                   slotId="1029384756"
@@ -1021,24 +1491,106 @@ function App() {
                   setUploadedFiles={setUploadedFiles}
                   activeMetadata={activeMetadata}
                   editedExif={editedExif}
+                  activeDocMetadata={activeDocMetadata}
+                  editedDocMetadata={editedDocMetadata}
+                  keepCurrent={keepCurrent}
+                  setKeepCurrent={setKeepCurrent}
+                  enableCompression={enableCompression}
+                  setEnableCompression={setEnableCompression}
+                  compressionQuality={compressionQuality}
+                  setCompressionQuality={setCompressionQuality}
                   onInterceptDiff={handleInterceptDiff}
                 />
               </div>
 
               {/* Mobile Accordion for Metadata Inspector */}
-              {activeMetadata && (
+              {(activeMetadata || activeDocMetadata) && (
                 <div className="mt-6 block lg:hidden">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setIsMobileMetadataOpen(!isMobileMetadataOpen)
-                    }
-                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-4 text-left shadow-xs transition hover:bg-slate-50"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                  {keepCurrent ? (
+                    <div className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-100/80 p-4 text-left shadow-xs cursor-not-allowed select-none">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-lg bg-slate-200 p-2 text-slate-500">
+                          <svg
+                            className="size-5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-700">
+                              {activeDocMetadata
+                                ? 'Metadata Dokumen'
+                                : 'Metadata & EXIF'}
+                            </span>
+                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-300">
+                              Terkunci (Keep Current)
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            Metadata asli dipertahankan tanpa perubahan
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setIsMobileMetadataOpen(!isMobileMetadataOpen)
+                        }
+                        className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-4 text-left shadow-xs transition hover:bg-slate-50"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+                            <svg
+                              className="size-5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Zm3.75 11.625a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"
+                              />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-slate-900">
+                                {activeDocMetadata
+                                  ? 'Metadata Dokumen'
+                                  : 'Metadata & EXIF'}
+                              </span>
+                              {(hasMetadataChanges ||
+                                hasDocMetadataChanges) && (
+                                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 border border-amber-200">
+                                  Ada Perubahan
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {isMobileMetadataOpen
+                                ? 'Tutup panel pengeditan'
+                                : 'Ketuk untuk memeriksa & mengedit metadata'}
+                            </p>
+                          </div>
+                        </div>
                         <svg
-                          className="size-5"
+                          className={`size-5 text-slate-400 transition-transform duration-200 ${
+                            isMobileMetadataOpen ? 'rotate-180' : ''
+                          }`}
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="2"
@@ -1047,60 +1599,44 @@ function App() {
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Zm3.75 11.625a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"
+                            d="m19.5 8.25-7.5 7.5-7.5-7.5"
                           />
                         </svg>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-slate-900">
-                            Metadata & EXIF
-                          </span>
-                          {hasMetadataChanges && (
-                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 border border-amber-200">
-                              Ada Perubahan
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-500">
-                          {isMobileMetadataOpen
-                            ? 'Tutup panel pengeditan'
-                            : 'Ketuk untuk memeriksa & mengedit metadata'}
-                        </p>
-                      </div>
-                    </div>
-                    <svg
-                      className={`size-5 text-slate-400 transition-transform duration-200 ${
-                        isMobileMetadataOpen ? 'rotate-180' : ''
-                      }`}
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                      />
-                    </svg>
-                  </button>
+                      </button>
 
-                  {isMobileMetadataOpen && (
-                    <div className="mt-3">
-                      <MetadataSideMenu
-                        metadata={activeMetadata}
-                        editedExif={editedExif}
-                        isLoading={isReadingMetadata}
-                        hasChanges={hasMetadataChanges}
-                        onUpdateField={handleUpdateExifField}
-                        onUpdateCoordinates={handleUpdateCoordinates}
-                        onUpdateDevice={handleUpdateDevice}
-                        onRemoveGps={handleRemoveGps}
-                        onStripAll={handleStripAllExif}
-                        onReset={handleResetExif}
-                      />
-                    </div>
+                      {isMobileMetadataOpen && (
+                        <div className="mt-3">
+                          {activeMetadata ? (
+                            <MetadataSideMenu
+                              metadata={activeMetadata}
+                              editedExif={editedExif}
+                              isLoading={isReadingMetadata}
+                              hasChanges={hasMetadataChanges}
+                              onUpdateField={handleUpdateExifField}
+                              onUpdateCoordinates={handleUpdateCoordinates}
+                              onUpdateDevice={handleUpdateDevice}
+                              onRemoveGps={handleRemoveGps}
+                              onStripAll={handleStripAllExif}
+                              onReset={handleResetExif}
+                            />
+                          ) : activeDocMetadata ? (
+                            <DocumentMetadataSideMenu
+                              documentMeta={editedDocMetadata}
+                              onUpdateField={handleUpdateDocField}
+                              onStripAll={handleStripAllDocMeta}
+                              onReset={handleResetDocMeta}
+                              hasChanges={hasDocMetadataChanges}
+                              fileInfo={{
+                                name: uploadedFiles[0]?.name || '',
+                                size: activeDocMetadata.size,
+                                format: activeDocMetadata.format,
+                                pageCount: activeDocMetadata.pageCount,
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}

@@ -81,4 +81,50 @@ describe('ExifEngine - Metadata Diff & Modification Tracking', () => {
     const diffs = ExifEngine.computeDiff(original, edited);
     expect(diffs).toEqual([]);
   });
+
+  it('should detect custom DateTimeOriginal (e.g. Year 4000 futuristik)', () => {
+    const original: ExifData = {
+      DateTimeOriginal: '2026-09-29T10:00:00',
+    };
+    const edited: ExifData = {
+      DateTimeOriginal: '4000-01-01T12:00:00',
+    };
+    const diffs = ExifEngine.computeDiff(original, edited);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].key).toBe('DateTimeOriginal');
+    expect(diffs[0].after).toBe('4000-01-01T12:00:00');
+    expect(diffs[0].type).toBe('modified');
+  });
+
+  it('should inject custom EXIF (Year 4000 and GPS) into JPEG blob via writeExif', async () => {
+    // 1x1 minimal valid JPEG base64
+    const minimalJpegBase64 =
+      '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+    const binaryStr = atob(minimalJpegBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const inputBlob = new Blob([bytes], { type: 'image/jpeg' });
+
+    const customExif: ExifData = {
+      Make: 'Apple',
+      Model: 'iPhone 15 Pro Max',
+      DateTimeOriginal: '4000-01-01T12:00:00',
+      GPSLatitude: 0.4636,
+      GPSLongitude: 101.381,
+    };
+
+    const outputBlob = await ExifEngine.writeExif(inputBlob, customExif);
+    expect(outputBlob).toBeInstanceOf(Blob);
+    expect(outputBlob.size).toBeGreaterThan(inputBlob.size);
+
+    // Verify written EXIF using ExifEngine.read
+    const testFile = new File([outputBlob], 'test-custom.jpg', {
+      type: 'image/jpeg',
+    });
+    const parsed = await ExifEngine.read(testFile);
+    expect(parsed.exif.Make).toBe('Apple');
+    expect(parsed.exif.Model).toBe('iPhone 15 Pro Max');
+  });
 });
