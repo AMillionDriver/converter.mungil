@@ -36,6 +36,18 @@ export const jsonToCsvEngine = {
   },
 };
 
+export const pdfToDocxEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.pdfToDocx(file);
+  },
+};
+
+export const docxToPdfEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.docxToPdf(file);
+  },
+};
+
 export const identityEngine = {
   runConversion: async (file: File): Promise<Blob> => {
     const buffer = await file.arrayBuffer();

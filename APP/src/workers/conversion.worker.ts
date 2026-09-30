@@ -84,6 +84,16 @@ async function loadEngineModule(engineId: string) {
         engineModules[engineId] = mod.pdfToTxtEngine;
         break;
       }
+      case 'document:pdf:docx': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.pdfToDocxEngine;
+        break;
+      }
+      case 'document:docx:pdf': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.docxToPdfEngine;
+        break;
+      }
       case 'document:txt:docx': {
         const mod = await import('../lib/engines/document-engines');
         engineModules[engineId] = mod.txtToDocxEngine;

@@ -206,7 +206,8 @@ export class DocumentMetadataEngine {
         coreXml = this.replaceOrInsertXmlTag(
           coreXml,
           'dcterms:modified',
-          modDateIso
+          modDateIso,
+          'xsi:type="dcterms:W3CDTF"'
         );
         if (metadata.creationDate) {
           const cDate =
@@ -216,7 +217,8 @@ export class DocumentMetadataEngine {
           coreXml = this.replaceOrInsertXmlTag(
             coreXml,
             'dcterms:created',
-            cDate
+            cDate,
+            'xsi:type="dcterms:W3CDTF"'
           );
         }
 
@@ -246,14 +248,19 @@ export class DocumentMetadataEngine {
   private static replaceOrInsertXmlTag(
     xml: string,
     tag: string,
-    value: string
+    value: string,
+    attributes: string = ''
   ): string {
     const regex = new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, 'i');
+    const attrStr = attributes ? ` ${attributes}` : '';
     if (regex.test(xml)) {
       if (!value) {
         return xml.replace(regex, '');
       }
-      return xml.replace(regex, `<${tag}>${this.escapeXml(value)}</${tag}>`);
+      return xml.replace(
+        regex,
+        `<${tag}${attrStr}>${this.escapeXml(value)}</${tag}>`
+      );
     }
     if (!value) return xml;
 
@@ -261,19 +268,43 @@ export class DocumentMetadataEngine {
     const closingTag = '</cp:coreProperties>';
     const insertIdx = xml.indexOf(closingTag);
     if (insertIdx !== -1) {
-      const tagString = `<${tag}>${this.escapeXml(value)}</${tag}>`;
+      const tagString = `  <${tag}${attrStr}>${this.escapeXml(value)}</${tag}>\n`;
       return xml.slice(0, insertIdx) + tagString + xml.slice(insertIdx);
     }
     return xml;
   }
 
   private static escapeXml(unsafe: string): string {
-    return unsafe
+    if (!unsafe) return '';
+    const normalized = unsafe.normalize ? unsafe.normalize('NFC') : unsafe;
+
+    let sanitized = '';
+    for (let i = 0; i < normalized.length; i++) {
+      const code = normalized.charCodeAt(i);
+      // Valid XML 1.0 chars: 0x9 (tab), 0xA (LF), 0xD (CR), 0x20-0xD7FF, 0xE000-0xFFFD
+      if (
+        code === 0x9 ||
+        code === 0xa ||
+        code === 0xd ||
+        (code >= 0x20 && code <= 0xd7ff) ||
+        (code >= 0xe000 && code <= 0xfffd)
+      ) {
+        sanitized += normalized[i];
+      } else if (code >= 0xd800 && code <= 0xdbff) {
+        if (i + 1 < normalized.length) {
+          const nextCode = normalized.charCodeAt(i + 1);
+          if (nextCode >= 0xdc00 && nextCode <= 0xdfff) {
+            sanitized += normalized[i] + normalized[i + 1];
+            i++;
+          }
+        }
+      }
+    }
+
+    return sanitized
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
+      .replace(/>/g, '&gt;');
   }
 
   private static createDefaultCoreXml(): string {

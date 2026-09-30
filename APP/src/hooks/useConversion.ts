@@ -41,8 +41,19 @@ export function useConversion() {
         throw err;
       }
 
+      console.error('[useConversion] Client conversion failed:', err);
+
+      // Document conversion engines are purely client-side in Phase 1
+      if (engineId.startsWith('document:')) {
+        setStatus('failed');
+        const clientErrMsg =
+          err instanceof Error ? err.message : 'Konversi dokumen gagal.';
+        setError(clientErrMsg);
+        throw new Error(clientErrMsg);
+      }
+
       console.warn(
-        '[useConversion] Client conversion failed. Trying backend fallback...'
+        '[useConversion] Attempting server-side fallback for image engine...'
       );
       try {
         const fallbackResult = await BackendFallbackManager.requestFallback(
@@ -52,12 +63,12 @@ export function useConversion() {
         );
         setStatus('completed');
         return fallbackResult;
-      } catch (fallbackErr) {
+      } catch {
         setStatus('failed');
-        setError(
-          fallbackErr instanceof Error ? fallbackErr.message : 'Fallback failed'
-        );
-        throw fallbackErr;
+        const clientErrMsg =
+          err instanceof Error ? err.message : 'Konversi gagal.';
+        setError(clientErrMsg);
+        throw new Error(clientErrMsg);
       }
     }
   };

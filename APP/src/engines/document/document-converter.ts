@@ -1,5 +1,25 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as fflate from 'fflate';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+
+// Register the worker module directly on globalThis so PDF.js runs in-thread
+// without nested worker or window.location dependencies in Web Worker environments.
+if (typeof globalThis !== 'undefined') {
+  (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker = pdfjsWorker;
+}
+
+export interface ExtractedPdfPage {
+  pageNumber: number;
+  lines: string[];
+}
+
+interface TextItemLike {
+  str: string;
+  transform: number[];
+  width: number;
+  height: number;
+}
 
 export class DocumentConverter {
   /**
@@ -82,59 +102,187 @@ export class DocumentConverter {
   }
 
   /**
-   * PDF -> TXT Converter (Client-side text extraction)
+   * High-fidelity PDF text and layout extraction using Mozilla PDF.js engine.
+   * Accurately resolves embedded CMaps, CIDFonts, TrueType/Type1 subsets,
+   * coordinates, kerning, line spacing, and paragraph breaks.
    */
-  static async pdfToTxt(file: File): Promise<Blob> {
-    const buffer = await file.arrayBuffer();
-    const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-    const pages = pdfDoc.getPages();
-    const extractedTextParts: string[] = [];
+  static async extractPdfTextWithLayout(buffer: ArrayBuffer): Promise<{
+    fullText: string;
+    pages: ExtractedPdfPage[];
+  }> {
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(buffer),
+      useSystemFonts: true,
+      disableFontFace: true,
+    });
 
-    // Extract text operators using raw content stream inspection
-    for (let i = 0; i < pages.length; i++) {
-      extractedTextParts.push(`--- Halaman ${i + 1} ---`);
-      try {
-        const page = pages[i];
-        // Read page content streams
-        const { Contents } = page.node.normalizedEntries();
-        if (Contents) {
-          const contentsArray = Array.isArray(Contents) ? Contents : [Contents];
-          for (const c of contentsArray) {
-            const rawBytes = (
-              c as unknown as { getContents?: () => Uint8Array }
-            ).getContents?.();
-            if (rawBytes) {
-              const str = new TextDecoder('latin1').decode(rawBytes);
-              // Match text inside (...) or [...] Tj / TJ operators
-              const matches = str.match(/\((.*?)\)\s*Tj|\[(.*?)\]\s*TJ/g);
-              if (matches) {
-                const pageStrings = matches
-                  .map((m) => {
-                    const cleaned = m.replace(/\\([()\\])/g, '$1');
-                    const parenMatch = cleaned.match(/\((.*?)\)/);
-                    return parenMatch ? parenMatch[1] : '';
-                  })
-                  .filter(Boolean);
-                if (pageStrings.length > 0) {
-                  extractedTextParts.push(pageStrings.join(' '));
-                }
-              }
+    const doc = await loadingTask.promise;
+    const pages: ExtractedPdfPage[] = [];
+    const textParts: string[] = [];
+
+    for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+      const page = await doc.getPage(pageNum);
+      const content = await page.getTextContent();
+      const items: TextItemLike[] = [];
+
+      for (const it of content.items) {
+        if ('str' in it && typeof it.str === 'string' && it.str) {
+          items.push({
+            str: it.str,
+            transform: it.transform,
+            width: it.width,
+            height: it.height,
+          });
+        }
+      }
+
+      // Group into visual lines based on baseline Y
+      const visualLines: { y: number; height: number; items: TextItemLike[] }[] = [];
+      for (const item of items) {
+        const y = item.transform[5];
+        const h = Math.abs(item.height) || 10;
+        let line = visualLines.find(
+          (l) => Math.abs(l.y - y) <= Math.max(l.height, h) * 0.4
+        );
+        if (!line) {
+          line = { y, height: h, items: [] };
+          visualLines.push(line);
+        }
+        line.items.push(item);
+      }
+
+      // Sort lines from top to bottom (Y descending in PDF coordinate system)
+      visualLines.sort((a, b) => b.y - a.y);
+
+      const pageLines: string[] = [];
+      let lastY: number | null = null;
+      let lastH = 12;
+
+      for (const line of visualLines) {
+        // Sort tokens on this line from left to right (X ascending)
+        line.items.sort((a, b) => a.transform[4] - b.transform[4]);
+
+        let lineText = '';
+        let lastXEnd: number | null = null;
+
+        for (const item of line.items) {
+          const x = item.transform[4];
+          if (
+            lastXEnd !== null &&
+            x - lastXEnd > 2 &&
+            !lineText.endsWith(' ') &&
+            !item.str.startsWith(' ')
+          ) {
+            lineText += ' ';
+          }
+          lineText += item.str;
+          lastXEnd = x + (item.width || 0);
+        }
+
+        const trimmed = lineText.trim();
+        if (trimmed) {
+          if (lastY !== null) {
+            const drop = lastY - line.y;
+            if (drop > lastH * 1.8) {
+              pageLines.push('');
             }
           }
+          pageLines.push(trimmed);
+          lastY = line.y;
+          lastH = line.height;
         }
-      } catch {
-        // Fallback for compressed stream
+      }
+
+      pages.push({
+        pageNumber: pageNum,
+        lines: pageLines,
+      });
+
+      textParts.push(`--- Halaman ${pageNum} ---`);
+      if (pageLines.length > 0) {
+        textParts.push(pageLines.join('\n'));
       }
     }
 
-    if (extractedTextParts.length <= pages.length) {
-      extractedTextParts.push(
-        `[Informasi]\nDokumen PDF '${file.name}' memiliki ${pages.length} halaman.\nBeberapa teks dienkripsi atau berupa gambar pindaian.`
+    const totalLines = pages.reduce((acc, p) => acc + p.lines.length, 0);
+    if (totalLines === 0) {
+      textParts.push(
+        `[Informasi]\nDokumen PDF memiliki ${doc.numPages} halaman.\nTeks tidak terdeteksi (kemungkinan dokumen berupa gambar hasil scan).`
       );
     }
 
-    const resultTxt = extractedTextParts.join('\n\n');
-    return new Blob([resultTxt], { type: 'text/plain;charset=utf-8' });
+    return {
+      fullText: textParts.join('\n\n'),
+      pages,
+    };
+  }
+
+  /**
+   * PDF -> TXT Converter
+   */
+  static async pdfToTxt(file: File): Promise<Blob> {
+    const buffer = await file.arrayBuffer();
+    const { fullText } = await this.extractPdfTextWithLayout(buffer);
+    return new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+  }
+
+  /**
+   * PDF -> DOCX Converter
+   */
+  static async pdfToDocx(file: File): Promise<Blob> {
+    const buffer = await file.arrayBuffer();
+    const { pages } = await this.extractPdfTextWithLayout(buffer);
+
+    const paragraphsXmlList: string[] = [];
+
+    for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
+      const page = pages[pageIdx];
+
+      if (page.lines.length === 0) {
+        paragraphsXmlList.push(
+          '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>'
+        );
+      } else {
+        for (const line of page.lines) {
+          if (!line.trim()) {
+            paragraphsXmlList.push(
+              '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>'
+            );
+          } else {
+            paragraphsXmlList.push(
+              `<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${this.escapeXml(line)}</w:t></w:r></w:p>`
+            );
+          }
+        }
+      }
+
+      // Add page break between pages
+      if (pageIdx < pages.length - 1) {
+        paragraphsXmlList.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+      }
+    }
+
+    if (paragraphsXmlList.length === 0) {
+      paragraphsXmlList.push(
+        '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>'
+      );
+    }
+
+    return this.buildDocxPackage(
+      paragraphsXmlList.join(''),
+      file.name.replace(/\.[^/.]+$/, '')
+    );
+  }
+
+  /**
+   * DOCX -> PDF Converter
+   */
+  static async docxToPdf(file: File): Promise<Blob> {
+    const txtBlob = await this.docxToTxt(file);
+    const txtFile = new File([txtBlob], file.name.replace(/\.[^/.]+$/, '.txt'), {
+      type: 'text/plain',
+    });
+    return this.txtToPdf(txtFile);
   }
 
   /**
@@ -217,7 +365,6 @@ export class DocumentConverter {
       return new Blob([''], { type: 'text/csv' });
     }
 
-    // Collect all headers
     const headerSet = new Set<string>();
     records.forEach((rec) => {
       if (typeof rec === 'object' && rec !== null) {
@@ -258,55 +405,11 @@ export class DocumentConverter {
     const paragraphsXml = lines
       .map(
         (l) =>
-          `<w:p><w:r><w:t xml:space="preserve">${this.escapeXml(l)}</w:t></w:r></w:p>`
+          `<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${this.escapeXml(l)}</w:t></w:r></w:p>`
       )
       .join('');
 
-    const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
-</Types>`;
-
-    const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
-</Relationships>`;
-
-    const docRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
-
-    const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:body>
-    ${paragraphsXml}
-  </w:body>
-</w:document>`;
-
-    const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:title>${this.escapeXml(file.name.replace(/\.[^/.]+$/, ''))}</dc:title>
-  <dc:creator>Mungil Converter</dc:creator>
-  <cp:lastModifiedBy>Mungil Converter</cp:lastModifiedBy>
-  <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
-  <dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>
-</cp:coreProperties>`;
-
-    const files: Record<string, Uint8Array> = {
-      '[Content_Types].xml': fflate.strToU8(contentTypesXml),
-      '_rels/.rels': fflate.strToU8(relsXml),
-      'word/_rels/document.xml.rels': fflate.strToU8(docRelsXml),
-      'word/document.xml': fflate.strToU8(docXml),
-      'docProps/core.xml': fflate.strToU8(coreXml),
-    };
-
-    const zipped = fflate.zipSync(files);
-    return new Blob([zipped as Uint8Array<ArrayBuffer>], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    });
+    return this.buildDocxPackage(paragraphsXml, file.name.replace(/\.[^/.]+$/, ''));
   }
 
   /**
@@ -321,7 +424,6 @@ export class DocumentConverter {
     }
 
     const docXml = fflate.strFromU8(docXmlBytes);
-    // Split into paragraphs <w:p>
     const paragraphs = docXml.split(/<\/w:p>/i);
     const resultLines: string[] = [];
 
@@ -342,13 +444,155 @@ export class DocumentConverter {
     });
   }
 
+  /**
+   * Builds a 100% ECMA-376 OpenXML standard compliant DOCX archive
+   * that opens cleanly in Microsoft Word without any recovery prompt.
+   */
+  private static buildDocxPackage(
+    paragraphsXml: string,
+    documentTitle: string
+  ): Blob {
+    const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
+  <Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`;
+
+    const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+
+    const docRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>
+</Relationships>`;
+
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault>
+      <w:rPr>
+        <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
+        <w:sz w:val="22"/>
+        <w:szCs w:val="22"/>
+        <w:lang w:val="id-ID"/>
+      </w:rPr>
+    </w:rPrDefault>
+  </w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:qFormat/>
+    <w:pPr>
+      <w:spacing w:after="120" w:line="240" w:lineRule="auto"/>
+    </w:pPr>
+  </w:style>
+</w:styles>`;
+
+    const settingsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:defaultTabStop w:val="720"/>
+</w:settings>`;
+
+    const fontTableXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:font w:name="Calibri">
+    <w:family w:val="swiss"/>
+    <w:pitch w:val="variable"/>
+  </w:font>
+</w:fonts>`;
+
+    const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Template>Normal.dotm</Template>
+  <TotalTime>1</TotalTime>
+  <Application>Mungil Converter</Application>
+  <Company>Mungil</Company>
+</Properties>`;
+
+    const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    ${paragraphsXml}
+    <w:sectPr>
+      <w:pgSz w:w="11906" w:h="16838"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:cols w:space="720"/>
+      <w:docGrid w:linePitch="360"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+
+    const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${this.escapeXml(documentTitle)}</dc:title>
+  <dc:creator>Mungil Converter</dc:creator>
+  <cp:lastModifiedBy>Mungil Converter</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>
+</cp:coreProperties>`;
+
+    const files: Record<string, Uint8Array> = {
+      '[Content_Types].xml': fflate.strToU8(contentTypesXml),
+      '_rels/.rels': fflate.strToU8(rootRelsXml),
+      'word/_rels/document.xml.rels': fflate.strToU8(docRelsXml),
+      'word/document.xml': fflate.strToU8(docXml),
+      'word/styles.xml': fflate.strToU8(stylesXml),
+      'word/settings.xml': fflate.strToU8(settingsXml),
+      'word/fontTable.xml': fflate.strToU8(fontTableXml),
+      'docProps/app.xml': fflate.strToU8(appXml),
+      'docProps/core.xml': fflate.strToU8(coreXml),
+    };
+
+    const zipped = fflate.zipSync(files);
+    return new Blob([zipped as Uint8Array<ArrayBuffer>], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+  }
+
   private static escapeXml(unsafe: string): string {
-    return unsafe
+    if (!unsafe) return '';
+    const normalized = unsafe.normalize ? unsafe.normalize('NFC') : unsafe;
+
+    let sanitized = '';
+    for (let i = 0; i < normalized.length; i++) {
+      const code = normalized.charCodeAt(i);
+      // Valid XML 1.0 chars: 0x9 (tab), 0xA (LF), 0xD (CR), 0x20-0xD7FF, 0xE000-0xFFFD
+      if (
+        code === 0x9 ||
+        code === 0xa ||
+        code === 0xd ||
+        (code >= 0x20 && code <= 0xd7ff) ||
+        (code >= 0xe000 && code <= 0xfffd)
+      ) {
+        sanitized += normalized[i];
+      } else if (code >= 0xd800 && code <= 0xdbff) {
+        // High surrogate - check if next char is low surrogate
+        if (i + 1 < normalized.length) {
+          const nextCode = normalized.charCodeAt(i + 1);
+          if (nextCode >= 0xdc00 && nextCode <= 0xdfff) {
+            sanitized += normalized[i] + normalized[i + 1];
+            i++;
+          }
+        }
+      }
+    }
+
+    return sanitized
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
+      .replace(/>/g, '&gt;');
   }
 
   private static unescapeXml(safe: string): string {

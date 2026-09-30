@@ -74,6 +74,14 @@ const engineMap: Record<string, () => Promise<EngineModule>> = {
     import('./engines/document-engines').then((m) => ({
       runConversion: m.pdfToTxtEngine.runConversion,
     })),
+  'document:pdf:docx': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.pdfToDocxEngine.runConversion,
+    })),
+  'document:docx:pdf': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.docxToPdfEngine.runConversion,
+    })),
   'document:txt:docx': () =>
     import('./engines/document-engines').then((m) => ({
       runConversion: m.txtToDocxEngine.runConversion,

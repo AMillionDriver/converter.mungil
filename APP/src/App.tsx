@@ -11,6 +11,7 @@ import { DocumentMetadataSideMenu } from './components/DocumentMetadataSideMenu'
 import { MetadataDiffModal } from './components/MetadataDiffModal';
 import { AdBanner } from './components/AdBanner';
 import { FilePreviewModal } from './components/FilePreviewModal';
+import { PdfPageManagerModal } from './components/PdfPageManagerModal';
 import {
   ExifEngine,
   type ExifData,
@@ -141,6 +142,7 @@ function Dropzone({
   const [selectedFormat, setSelectedFormat] = useState<string>('');
   const [isMerging, setIsMerging] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<File | null>(null);
+  const [pageManagerTarget, setPageManagerTarget] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const { runConversion, status, progress } = useConversion();
@@ -267,14 +269,9 @@ function Dropzone({
     const allPdfs = nextFiles.every((f) =>
       f.name.toLowerCase().endsWith('.pdf')
     );
-    if (allPdfs) {
-      if (nextFiles.length > 1) {
-        setAvailableFormats(['merge']);
-        setSelectedFormat('merge');
-      } else {
-        setAvailableFormats(['pdf']);
-        setSelectedFormat('pdf');
-      }
+    if (allPdfs && nextFiles.length > 1) {
+      setAvailableFormats(['merge']);
+      setSelectedFormat('merge');
       return;
     }
 
@@ -394,11 +391,25 @@ function Dropzone({
           setIsMerging(true);
           try {
             const { PdfEngine } = await import('./engines/document/pdf-merge');
-            const outputBlob = await PdfEngine.process({
+            let outputBlob = await PdfEngine.process({
               type: 'compress',
               files: [targetFile],
               options: {},
             });
+            if (!keepCurrent && activeDocMetadata && editedDocMetadata) {
+              try {
+                outputBlob = await DocumentMetadataEngine.writeMetadata(
+                  outputBlob,
+                  editedDocMetadata,
+                  'pdf'
+                );
+              } catch (metaErr) {
+                console.warn(
+                  '[DocumentMetadataEngine] Gagal menulis metadata PDF:',
+                  metaErr
+                );
+              }
+            }
             const filename = enableCompression
               ? `compressed-${targetFile.name}`
               : targetFile.name;
@@ -628,6 +639,15 @@ function Dropzone({
                       >
                         Pratinjau
                       </button>
+                      {f.name.toLowerCase().endsWith('.pdf') && (
+                        <button
+                          type="button"
+                          onClick={() => setPageManagerTarget(f)}
+                          className="text-indigo-600 hover:text-indigo-800 font-medium transition"
+                        >
+                          Kelola Halaman
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => removeFile(i)}
@@ -722,6 +742,29 @@ function Dropzone({
                   </svg>
                   <span>Pratinjau File</span>
                 </button>
+                {uploadedFiles[0].name.toLowerCase().endsWith('.pdf') && (
+                  <button
+                    type="button"
+                    onClick={() => setPageManagerTarget(uploadedFiles[0])}
+                    className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition active:scale-95 border border-indigo-100"
+                    title="Atur urutan, putar, atau hapus halaman PDF"
+                  >
+                    <svg
+                      className="size-3 text-indigo-600"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z"
+                      />
+                    </svg>
+                    <span>Kelola Halaman</span>
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -888,6 +931,20 @@ function Dropzone({
           file={previewTarget}
           isOpen={Boolean(previewTarget)}
           onClose={() => setPreviewTarget(null)}
+        />
+      )}
+
+      {pageManagerTarget && (
+        <PdfPageManagerModal
+          file={pageManagerTarget}
+          isOpen={Boolean(pageManagerTarget)}
+          onClose={() => setPageManagerTarget(null)}
+          onApply={(updatedFile) => {
+            setUploadedFiles((prev) =>
+              prev.map((f) => (f.name === updatedFile.name ? updatedFile : f))
+            );
+            setPageManagerTarget(null);
+          }}
         />
       )}
     </div>

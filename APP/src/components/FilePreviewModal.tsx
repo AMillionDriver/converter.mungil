@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import { PdfViewer } from './preview/PdfViewer';
+import { DocxViewer } from './preview/DocxViewer';
+import { CsvViewer } from './preview/CsvViewer';
+import { TextViewer } from './preview/TextViewer';
 
 interface FilePreviewModalProps {
   file: File | null;
@@ -12,19 +16,14 @@ export function FilePreviewModal({
   onClose,
 }: FilePreviewModalProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [textContent, setTextContent] = useState<string | null>(null);
-  const [csvRows, setCsvRows] = useState<string[][] | null>(null);
   const [imgDimensions, setImgDimensions] = useState<{
     w: number;
     h: number;
   } | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !file) {
       setBlobUrl(null);
-      setTextContent(null);
-      setCsvRows(null);
       setImgDimensions(null);
       return;
     }
@@ -40,52 +39,21 @@ export function FilePreviewModal({
       'ico',
       'svg',
     ].includes(ext);
-    const isPdf = ext === 'pdf';
-    const isCsv = ext === 'csv';
-    const isText = ['txt', 'json', 'log', 'md'].includes(ext);
 
     let active = true;
     let createdUrl: string | null = null;
 
-    if (isImage || isPdf) {
+    if (isImage) {
       createdUrl = URL.createObjectURL(file);
       setBlobUrl(createdUrl);
 
-      if (isImage) {
-        const img = new Image();
-        img.onload = () => {
-          if (active) {
-            setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
-          }
-        };
-        img.src = createdUrl;
-      }
-    } else if (isCsv || isText) {
-      setIsLoading(true);
-      file
-        .slice(0, 100000)
-        .text()
-        .then((text) => {
-          if (!active) return;
-          if (isCsv) {
-            const lines = text
-              .split(/\r?\n/)
-              .filter((line) => line.trim().length > 0)
-              .slice(0, 50);
-            const parsed = lines.map((l) =>
-              l.split(',').map((cell) => cell.replace(/^"|"$/g, '').trim())
-            );
-            setCsvRows(parsed);
-          } else {
-            setTextContent(text);
-          }
-        })
-        .catch(() => {
-          if (active) setTextContent('Gagal membaca isi berkas teks.');
-        })
-        .finally(() => {
-          if (active) setIsLoading(false);
-        });
+      const img = new Image();
+      img.onload = () => {
+        if (active) {
+          setImgDimensions({ w: img.naturalWidth, h: img.naturalHeight });
+        }
+      };
+      img.src = createdUrl;
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -120,13 +88,14 @@ export function FilePreviewModal({
     'svg',
   ].includes(ext);
   const isPdf = ext === 'pdf';
+  const isDocx = ext === 'docx';
   const isCsv = ext === 'csv';
   const isText = ['txt', 'json', 'log', 'md'].includes(ext);
 
   return (
     <div
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6"
       role="dialog"
     >
       {/* Backdrop */}
@@ -136,7 +105,7 @@ export function FilePreviewModal({
       />
 
       {/* Modal Dialog Card */}
-      <div className="relative flex flex-col w-full max-w-5xl h-[85vh] max-h-[850px] rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative flex flex-col w-full max-w-5xl h-[88vh] max-h-[850px] rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3 min-w-0">
@@ -207,10 +176,10 @@ export function FilePreviewModal({
         </header>
 
         {/* Content Body */}
-        <main className="flex-1 overflow-auto bg-slate-100/60 p-3 sm:p-6 flex items-center justify-center">
+        <main className="flex-1 overflow-hidden bg-slate-100/60 flex items-center justify-center">
           {/* 1. Image Viewer */}
           {isImage && blobUrl && (
-            <div className="relative flex h-full w-full items-center justify-center overflow-auto">
+            <div className="relative flex h-full w-full items-center justify-center p-4 overflow-auto">
               <img
                 src={blobUrl}
                 alt={file.name}
@@ -219,69 +188,20 @@ export function FilePreviewModal({
             </div>
           )}
 
-          {/* 2. PDF Viewer (Native Browser Engine) */}
-          {isPdf && blobUrl && (
-            <iframe
-              src={blobUrl}
-              title={`Pratinjau ${file.name}`}
-              className="h-full w-full rounded-xl border border-slate-200 bg-white shadow-xs"
-            />
-          )}
+          {/* 2. Interactive PDF Viewer (PDF.js Canvas) */}
+          {isPdf && <PdfViewer file={file} />}
 
-          {/* 3. CSV Table Viewer */}
-          {isCsv && csvRows && (
-            <div className="h-full w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-xs">
-              <table className="w-full border-collapse text-left text-xs">
-                {csvRows.length > 0 && (
-                  <thead className="sticky top-0 bg-slate-100 font-semibold text-slate-700 border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3 w-12 text-slate-400 font-mono text-[10px]">
-                        #
-                      </th>
-                      {csvRows[0].map((header, idx) => (
-                        <th
-                          key={idx}
-                          className="py-2.5 px-3 border-r border-slate-200 last:border-r-0 truncate max-w-[200px]"
-                        >
-                          {header || `Kolom ${idx + 1}`}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                )}
-                <tbody className="divide-y divide-slate-100">
-                  {csvRows.slice(1).map((row, rowIdx) => (
-                    <tr key={rowIdx} className="hover:bg-slate-50 transition">
-                      <td className="py-2 px-3 font-mono text-[10px] text-slate-400 bg-slate-50/50">
-                        {rowIdx + 1}
-                      </td>
-                      {row.map((cell, cellIdx) => (
-                        <td
-                          key={cellIdx}
-                          className="py-2 px-3 text-slate-700 border-r border-slate-100 last:border-r-0 truncate max-w-[200px]"
-                        >
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="p-3 text-center border-t border-slate-100 text-xs text-slate-400 bg-slate-50/60">
-                Menampilkan 50 baris pertama dokumen
-              </div>
-            </div>
-          )}
+          {/* 3. Interactive DOCX Document Viewer */}
+          {isDocx && <DocxViewer file={file} />}
 
-          {/* 4. Text / JSON Viewer */}
-          {isText && textContent !== null && (
-            <div className="h-full w-full overflow-auto rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs text-slate-800 shadow-xs whitespace-pre-wrap leading-relaxed">
-              {isLoading ? 'Memuat teks...' : textContent}
-            </div>
-          )}
+          {/* 4. Interactive CSV Table Viewer */}
+          {isCsv && <CsvViewer file={file} />}
 
-          {/* 5. Fallback for Office Documents & Other Types */}
-          {!isImage && !isPdf && !isCsv && !isText && (
+          {/* 5. Interactive Text / JSON / Code Viewer */}
+          {isText && <TextViewer file={file} />}
+
+          {/* 6. Fallback for Unsupported Binary Formats */}
+          {!isImage && !isPdf && !isDocx && !isCsv && !isText && (
             <div className="flex flex-col items-center justify-center p-8 text-center max-w-md">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 mb-4 border border-indigo-100 shadow-xs">
                 <svg
@@ -299,11 +219,11 @@ export function FilePreviewModal({
                 </svg>
               </div>
               <h4 className="text-base font-bold text-slate-800">
-                Dokumen {ext.toUpperCase()} Teridentifikasi
+                Format {ext.toUpperCase()} Teridentifikasi
               </h4>
               <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
-                Format biner dokumen Office ini telah tervalidasi dan siap
-                dikonversi melalui pipeline yang tersedia.
+                Format berkas ini telah tervalidasi dan siap diproses melalui
+                opsi konversi yang tersedia di bawah.
               </p>
               <div className="mt-5 flex items-center justify-center gap-4 rounded-xl border border-slate-200 bg-white p-3 w-full text-xs text-slate-600">
                 <div>

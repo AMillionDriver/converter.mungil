@@ -27,6 +27,7 @@
     "fflate": "^0.8.3",
     "idb": "^8.0.3",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
     "piexifjs": "^1.0.6",
     "react": "latest",
     "react-dom": "latest",
