@@ -36,4 +36,16 @@ export class DownloadManager {
     );
     return `${nameWithoutExt}_converted.${targetExtension}`;
   }
+
+  static async downloadZip(
+    files: Array<{ name: string; blob: Blob } | File>,
+    zipFilename: string = `converted-files-${Date.now()}.zip`
+  ): Promise<void> {
+    const { ArchiveEngine } = await import('../engines/archive/zip');
+    const zipBlob = await ArchiveEngine.zipFiles(files);
+    await DownloadManager.download(zipBlob, {
+      filename: zipFilename,
+      mimeType: 'application/zip',
+    });
+  }
 }

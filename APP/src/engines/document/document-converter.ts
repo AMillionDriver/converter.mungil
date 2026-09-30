@@ -286,51 +286,63 @@ export class DocumentConverter {
   }
 
   /**
-   * CSV -> JSON Converter
+   * RFC-4180 compliant CSV parser helper that handles quotes, escaped quotes, and commas
    */
-  static async csvToJson(file: File): Promise<Blob> {
-    const text = await file.text();
-    const lines = text
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
+  static parseCsvLines(text: string): { headers: string[]; rows: string[][] } {
+    const lines = text.split(/\r?\n/);
+    const parsedLines: string[][] = [];
 
-    if (lines.length === 0) {
-      return new Blob(['[]'], { type: 'application/json' });
-    }
-
-    const parseLine = (line: string): string[] => {
-      const result: string[] = [];
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const row: string[] = [];
       let current = '';
-      let insideQuote = false;
+      let insideQuotes = false;
 
       for (let i = 0; i < line.length; i++) {
         const char = line[i];
-        if (char === '"' || char === "'") {
-          insideQuote = !insideQuote;
-        } else if (char === ',' && !insideQuote) {
-          result.push(current.trim());
+        if (char === '"') {
+          if (insideQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            insideQuotes = !insideQuotes;
+          }
+        } else if (char === ',' && !insideQuotes) {
+          row.push(current.trim());
           current = '';
         } else {
           current += char;
         }
       }
-      result.push(current.trim());
-      return result;
-    };
+      row.push(current.trim());
+      parsedLines.push(row);
+    }
 
-    const headers = parseLine(lines[0]).map((h) =>
-      h.replace(/^["']|["']$/g, '')
-    );
-    const rows = lines.slice(1);
+    if (parsedLines.length === 0) {
+      return { headers: [], rows: [] };
+    }
+
+    return {
+      headers: parsedLines[0],
+      rows: parsedLines.slice(1),
+    };
+  }
+
+  /**
+   * CSV -> JSON Converter
+   */
+  static async csvToJson(file: File): Promise<Blob> {
+    const text = await file.text();
+    const { headers, rows } = this.parseCsvLines(text);
+
+    if (headers.length === 0) {
+      return new Blob(['[]'], { type: 'application/json' });
+    }
+
     const jsonResult = rows.map((row) => {
-      const cells = parseLine(row);
       const obj: Record<string, string> = {};
       headers.forEach((header, index) => {
-        const val =
-          cells[index] !== undefined
-            ? cells[index].replace(/^["']|["']$/g, '')
-            : '';
+        const val = row[index] !== undefined ? row[index] : '';
         obj[header || `col_${index + 1}`] = val;
       });
       return obj;
@@ -338,6 +350,592 @@ export class DocumentConverter {
 
     const jsonString = JSON.stringify(jsonResult, null, 2);
     return new Blob([jsonString], { type: 'application/json' });
+  }
+
+  /**
+   * Helper to convert 0-indexed column number to Excel column letters (A, B, ..., Z, AA, AB, ...)
+   */
+  static getColumnLetter(colIndex: number): string {
+    let letter = '';
+    let temp = colIndex;
+    while (temp >= 0) {
+      letter = String.fromCharCode((temp % 26) + 65) + letter;
+      temp = Math.floor(temp / 26) - 1;
+    }
+    return letter;
+  }
+
+  /**
+   * CSV -> DOCX Converter (Preserves Native Word Table Structure, Column Grid & Auto Landscape)
+   */
+  static async csvToDocx(file: File): Promise<Blob> {
+    const text = await file.text();
+    const { headers, rows } = this.parseCsvLines(text);
+
+    if (headers.length === 0) {
+      return this.txtToDocx(file);
+    }
+
+    const colCount = headers.length;
+    const isLandscape = colCount > 5;
+    const narrowMargins = colCount > 8;
+
+    // Available page width in DXA:
+    // Landscape A4 = 16838 dxa. Margin narrow (500 dxa * 2 = 1000 dxa). Usable = 15838 dxa.
+    // Portrait A4 = 11906 dxa. Margin standard (1440 dxa * 2 = 2880 dxa). Usable = 9026 dxa.
+    const marginDxa = narrowMargins ? 500 : isLandscape ? 720 : 1440;
+    const pageWidthDxa = isLandscape ? 16838 : 11906;
+    const usableWidthDxa = pageWidthDxa - marginDxa * 2;
+
+    // Adaptive typography & cell margins
+    const fontSizeVal =
+      colCount > 15
+        ? '13'
+        : colCount > 10
+          ? '15'
+          : colCount > 6
+            ? '17'
+            : '19'; // half-points
+    const cellPadTop = colCount > 12 ? '50' : '80';
+    const cellPadBottom = colCount > 12 ? '50' : '80';
+    const cellPadHoriz = colCount > 15 ? '40' : colCount > 10 ? '60' : '100';
+
+    // Calculate maximum character length for each column across headers and sample rows
+    const sampleRows = rows.slice(0, 50);
+    const colWeights: number[] = headers.map((h, cIdx) => {
+      let maxLen = h.length;
+      for (const row of sampleRows) {
+        if (row[cIdx] && row[cIdx].length > maxLen) {
+          maxLen = row[cIdx].length;
+        }
+      }
+      return Math.min(Math.max(maxLen, 4), 30);
+    });
+
+    const totalWeight = colWeights.reduce((acc, w) => acc + w, 0);
+
+    // Minimum column dxa to prevent 1-letter vertical squash:
+    // Ensures at least 650 dxa per column even for 27 columns!
+    const minColDxa = colCount > 15 ? 650 : colCount > 8 ? 900 : 1200;
+
+    let colWidthsDxa = colWeights.map((w) =>
+      Math.max(Math.round((w / totalWeight) * usableWidthDxa), minColDxa)
+    );
+
+    const sumCalculated = colWidthsDxa.reduce((acc, w) => acc + w, 0);
+    if (sumCalculated < usableWidthDxa) {
+      const extra = usableWidthDxa - sumCalculated;
+      colWidthsDxa = colWidthsDxa.map((w) => w + Math.floor(extra / colCount));
+    }
+
+    const totalTableDxa = colWidthsDxa.reduce((acc, w) => acc + w, 0);
+
+    // Build Word OpenXML Table Grid (<w:tblGrid>)
+    const tblGridXml = `
+      <w:tblGrid>
+        ${colWidthsDxa.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}
+      </w:tblGrid>`;
+
+    // Header cells with subtle slate background and bold font
+    const headerCellsXml = headers
+      .map(
+        (h, cIdx) => `
+      <w:tc>
+        <w:tcPr>
+          <w:tcW w:w="${colWidthsDxa[cIdx]}" w:type="dxa"/>
+          <w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/>
+          <w:tcMar>
+            <w:top w:w="${cellPadTop}" w:type="dxa"/>
+            <w:bottom w:w="${cellPadBottom}" w:type="dxa"/>
+            <w:left w:w="${cellPadHoriz}" w:type="dxa"/>
+            <w:right w:w="${cellPadHoriz}" w:type="dxa"/>
+          </w:tcMar>
+        </w:tcPr>
+        <w:p>
+          <w:pPr>
+            <w:spacing w:after="0" w:line="240" w:lineRule="auto"/>
+          </w:pPr>
+          <w:r>
+            <w:rPr>
+              <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>
+              <w:b/>
+              <w:sz w:val="${fontSizeVal}"/>
+              <w:color w:val="0F172A"/>
+            </w:rPr>
+            <w:t xml:space="preserve">${this.escapeXml(h)}</w:t>
+          </w:r>
+        </w:p>
+      </w:tc>`
+      )
+      .join('');
+
+    const headerRowXml = `
+    <w:tr>
+      <w:trPr>
+        <w:tblHeader/>
+        <w:cantSplit/>
+      </w:trPr>
+      ${headerCellsXml}
+    </w:tr>`;
+
+    // Data rows with alternating light row shading and clean cell borders
+    const dataRowsXml = rows
+      .map((row, rIdx) => {
+        const rowBg = rIdx % 2 === 1 ? ' fill="F8FAFC"' : '';
+        const cellsXml = headers
+          .map((_, cIdx) => {
+            const val = row[cIdx] !== undefined ? row[cIdx] : '';
+            return `
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:w="${colWidthsDxa[cIdx]}" w:type="dxa"/>
+            ${rowBg ? `<w:shd w:val="clear" w:color="auto"${rowBg}/>` : ''}
+            <w:tcMar>
+              <w:top w:w="${cellPadTop}" w:type="dxa"/>
+              <w:bottom w:w="${cellPadBottom}" w:type="dxa"/>
+              <w:left w:w="${cellPadHoriz}" w:type="dxa"/>
+              <w:right w:w="${cellPadHoriz}" w:type="dxa"/>
+            </w:tcMar>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:line="240" w:lineRule="auto"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>
+                <w:sz w:val="${fontSizeVal}"/>
+                <w:color w:val="334155"/>
+              </w:rPr>
+              <w:t xml:space="preserve">${this.escapeXml(val)}</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>`;
+          })
+          .join('');
+
+        return `
+    <w:tr>
+      <w:trPr>
+        <w:cantSplit/>
+      </w:trPr>
+      ${cellsXml}
+    </w:tr>`;
+      })
+      .join('');
+
+    const tableXml = `
+    <w:tbl>
+      <w:tblPr>
+        <w:tblStyle w:val="TableGrid"/>
+        <w:tblW w:w="${totalTableDxa}" w:type="dxa"/>
+        <w:tblLayout w:type="fixed"/>
+        <w:tblBorders>
+          <w:top w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+          <w:left w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+          <w:bottom w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+          <w:right w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+          <w:insideH w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/>
+          <w:insideV w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/>
+        </w:tblBorders>
+      </w:tblPr>
+      ${tblGridXml}
+      ${headerRowXml}
+      ${dataRowsXml}
+    </w:tbl>`;
+
+    return this.buildDocxPackage(
+      tableXml,
+      file.name.replace(/\.[^/.]+$/, ''),
+      {
+        landscape: isLandscape,
+        narrowMargins,
+      }
+    );
+  }
+
+  /**
+   * CSV -> PDF Converter (Preserves Table Structure with Auto Landscape/Wide format and Grid)
+   */
+  static async csvToPdf(file: File): Promise<Blob> {
+    const text = await file.text();
+    const { headers, rows } = this.parseCsvLines(text);
+
+    if (headers.length === 0) {
+      return this.txtToPdf(file);
+    }
+
+    const pdfDoc = await PDFDocument.create();
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    // Orientation and page width scaling:
+    // If > 15 columns, use wide landscape (A3 or dynamic width) to preserve readbility!
+    const colCount = headers.length;
+    const isLandscape = colCount > 5;
+    let pageWidth = isLandscape ? 841.89 : 595.28;
+    let pageHeight = isLandscape ? 595.28 : 841.89;
+
+    if (colCount > 15) {
+      pageWidth = Math.max(1190.55, colCount * 52 + 72);
+      pageHeight = 841.89;
+    }
+
+    const margin = 36; // 0.5 inch margin
+    const usableWidth = pageWidth - margin * 2;
+    const colWidth = usableWidth / colCount;
+
+    const fontSize = colCount > 15 ? 6.5 : colCount > 8 ? 7 : colCount > 5 ? 8 : 9;
+    const headerHeight = 22;
+    const rowHeight = 18;
+
+    // Helper to truncate text to fit inside cell width with ellipsis
+    const truncateToWidth = (str: string, width: number, isHeader = false) => {
+      const font = isHeader ? fontBold : fontRegular;
+      if (font.widthOfTextAtSize(str, fontSize) <= width) {
+        return str;
+      }
+      let truncated = str;
+      while (
+        truncated.length > 0 &&
+        font.widthOfTextAtSize(truncated + '...', fontSize) > width
+      ) {
+        truncated = truncated.slice(0, -1);
+      }
+      return truncated ? truncated + '...' : '';
+    };
+
+    let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+    let currentY = pageHeight - margin;
+
+    const drawHeader = (page: typeof currentPage) => {
+      // Header background
+      page.drawRectangle({
+        x: margin,
+        y: currentY - headerHeight,
+        width: usableWidth,
+        height: headerHeight,
+        color: rgb(0.94, 0.96, 0.98),
+      });
+
+      // Header bottom border
+      page.drawLine({
+        start: { x: margin, y: currentY - headerHeight },
+        end: { x: margin + usableWidth, y: currentY - headerHeight },
+        thickness: 1,
+        color: rgb(0.75, 0.8, 0.88),
+      });
+
+      // Header texts
+      headers.forEach((h, i) => {
+        const textToDraw = truncateToWidth(h, colWidth - 8, true);
+        page.drawText(textToDraw, {
+          x: margin + i * colWidth + 4,
+          y: currentY - headerHeight + 6,
+          size: fontSize,
+          font: fontBold,
+          color: rgb(0.09, 0.13, 0.2),
+        });
+      });
+
+      currentY -= headerHeight;
+    };
+
+    // Draw first page header
+    drawHeader(currentPage);
+
+    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+      // Check if row fits on current page
+      if (currentY - rowHeight < margin + 20) {
+        currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+        currentY = pageHeight - margin;
+        drawHeader(currentPage);
+      }
+
+      const row = rows[rIdx];
+
+      // Alternating row background
+      if (rIdx % 2 === 1) {
+        currentPage.drawRectangle({
+          x: margin,
+          y: currentY - rowHeight,
+          width: usableWidth,
+          height: rowHeight,
+          color: rgb(0.97, 0.98, 0.99),
+        });
+      }
+
+      // Bottom grid line for row
+      currentPage.drawLine({
+        start: { x: margin, y: currentY - rowHeight },
+        end: { x: margin + usableWidth, y: currentY - rowHeight },
+        thickness: 0.5,
+        color: rgb(0.88, 0.91, 0.94),
+      });
+
+      // Cell texts
+      headers.forEach((_, cIdx) => {
+        const val = row[cIdx] !== undefined ? row[cIdx] : '';
+        const textToDraw = truncateToWidth(val, colWidth - 8, false);
+
+        currentPage.drawText(textToDraw, {
+          x: margin + cIdx * colWidth + 4,
+          y: currentY - rowHeight + 5,
+          size: fontSize,
+          font: fontRegular,
+          color: rgb(0.2, 0.25, 0.33),
+        });
+      });
+
+      currentY -= rowHeight;
+    }
+
+    // Outer table bounding box and vertical column dividers on all pages
+    const pages = pdfDoc.getPages();
+    pages.forEach((page, pIdx) => {
+      // Page number in footer
+      const footerText = `Halaman ${pIdx + 1} dari ${pages.length}`;
+      const footerWidth = fontRegular.widthOfTextAtSize(footerText, 8);
+      page.drawText(footerText, {
+        x: pageWidth - margin - footerWidth,
+        y: margin - 15,
+        size: 8,
+        font: fontRegular,
+        color: rgb(0.5, 0.55, 0.6),
+      });
+    });
+
+    pdfDoc.setTitle(file.name.replace(/\.[^/.]+$/, ''));
+    pdfDoc.setProducer('Mungil Converter');
+    pdfDoc.setCreator('Mungil Converter');
+
+    const pdfBytes = await pdfDoc.save();
+    return new Blob([pdfBytes as Uint8Array<ArrayBuffer>], {
+      type: 'application/pdf',
+    });
+  }
+
+  /**
+   * CSV -> XLSX Converter (Preserves Full Native OpenXML Spreadsheet with Auto-Fit Columns & Frozen Header)
+   */
+  static async csvToXlsx(file: File): Promise<Blob> {
+    const text = await file.text();
+    const { headers, rows } = this.parseCsvLines(text);
+
+    if (headers.length === 0) {
+      return new Blob([], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+    }
+
+    // 1. Calculate column widths based on maximum content length
+    const sampleRows = rows.slice(0, 100);
+    const colWidths = headers.map((h, cIdx) => {
+      let maxLen = h.length;
+      for (const row of sampleRows) {
+        if (row[cIdx] && row[cIdx].length > maxLen) {
+          maxLen = row[cIdx].length;
+        }
+      }
+      return Math.min(Math.max(maxLen + 3, 10), 45);
+    });
+
+    const colsXml = colWidths
+      .map(
+        (w, idx) =>
+          `<col min="${idx + 1}" max="${idx + 1}" width="${w}" customWidth="1"/>`
+      )
+      .join('');
+
+    // 2. Build rows XML
+    // Row 1: Header row (style index 1)
+    const headerRowCells = headers
+      .map((h, cIdx) => {
+        const ref = `${this.getColumnLetter(cIdx)}1`;
+        return `<c r="${ref}" t="inlineStr" s="1"><is><t>${this.escapeXml(h)}</t></is></c>`;
+      })
+      .join('');
+
+    const headerRowXml = `<row r="1" spans="1:${headers.length}">${headerRowCells}</row>`;
+
+    // Data rows (starting at row 2)
+    const dataRowsXmlList: string[] = [];
+    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+      const rowNum = rIdx + 2;
+      const row = rows[rIdx];
+      const isAlt = rIdx % 2 === 1;
+      const styleIdx = isAlt ? '2' : '3';
+
+      const cellsXml = headers
+        .map((_, cIdx) => {
+          const val = row[cIdx] !== undefined ? row[cIdx] : '';
+          const ref = `${this.getColumnLetter(cIdx)}${rowNum}`;
+
+          if (!val) {
+            return `<c r="${ref}" s="${styleIdx}"/>`;
+          }
+
+          // Check if purely numeric
+          const isNum =
+            !isNaN(Number(val)) &&
+            val.trim() !== '' &&
+            !val.startsWith('0') &&
+            !val.includes('-');
+          if (isNum) {
+            return `<c r="${ref}" t="n" s="${styleIdx}"><v>${val.trim()}</v></c>`;
+          }
+
+          return `<c r="${ref}" t="inlineStr" s="${styleIdx}"><is><t>${this.escapeXml(val)}</t></is></c>`;
+        })
+        .join('');
+
+      dataRowsXmlList.push(
+        `<row r="${rowNum}" spans="1:${headers.length}">${cellsXml}</row>`
+      );
+    }
+
+    const sheetDataXml = headerRowXml + dataRowsXmlList.join('');
+
+    const lastColLetter = this.getColumnLetter(headers.length - 1);
+    const lastRowNum = rows.length + 1;
+    const dimensionRef = `A1:${lastColLetter}${lastRowNum}`;
+
+    // Worksheet XML with frozen header pane & auto-filter
+    const sheet1Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+           xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="${dimensionRef}"/>
+  <sheetViews>
+    <sheetView tabSelected="1" workbookViewId="0">
+      <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="20"/>
+  <cols>
+    ${colsXml}
+  </cols>
+  <sheetData>
+    ${sheetDataXml}
+  </sheetData>
+  <autoFilter ref="${dimensionRef}"/>
+</worksheet>`;
+
+    // Styles XML (Fonts, Fills, Borders, CellXfs)
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font>
+      <sz val="11"/>
+      <color theme="1"/>
+      <name val="Calibri"/>
+      <family val="2"/>
+    </font>
+    <font>
+      <b/>
+      <sz val="11"/>
+      <color rgb="FF0F172A"/>
+      <name val="Calibri"/>
+      <family val="2"/>
+    </font>
+  </fonts>
+  <fills count="4">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border>
+      <left/><right/><top/><bottom/><diagonal/>
+    </border>
+    <border>
+      <left style="thin"><color rgb="FFE2E8F0"/></left>
+      <right style="thin"><color rgb="FFE2E8F0"/></right>
+      <top style="thin"><color rgb="FFE2E8F0"/></top>
+      <bottom style="thin"><color rgb="FFE2E8F0"/></bottom>
+    </border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="4">
+    <!-- 0: default -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <!-- 1: header (bold, slate fill, border) -->
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1">
+      <alignment vertical="center"/>
+    </xf>
+    <!-- 2: alternate data row (alt fill, border) -->
+    <xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1">
+      <alignment vertical="center"/>
+    </xf>
+    <!-- 3: normal data row (no fill, border) -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1">
+      <alignment vertical="center"/>
+    </xf>
+  </cellXfs>
+</styleSheet>`;
+
+    const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`;
+
+    const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+
+    const wbRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+
+    const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+
+    const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>Mungil Converter</Application>
+</Properties>`;
+
+    const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${this.escapeXml(file.name.replace(/\.[^/.]+$/, ''))}</dc:title>
+  <dc:creator>Mungil Converter</dc:creator>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>
+</cp:coreProperties>`;
+
+    const zipFiles: Record<string, Uint8Array> = {
+      '[Content_Types].xml': fflate.strToU8(contentTypesXml),
+      '_rels/.rels': fflate.strToU8(rootRelsXml),
+      'xl/_rels/workbook.xml.rels': fflate.strToU8(wbRelsXml),
+      'xl/workbook.xml': fflate.strToU8(workbookXml),
+      'xl/styles.xml': fflate.strToU8(stylesXml),
+      'xl/worksheets/sheet1.xml': fflate.strToU8(sheet1Xml),
+      'docProps/app.xml': fflate.strToU8(appXml),
+      'docProps/core.xml': fflate.strToU8(coreXml),
+    };
+
+    const zipped = fflate.zipSync(zipFiles);
+    return new Blob([zipped as Uint8Array<ArrayBuffer>], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
   }
 
   /**
@@ -450,8 +1048,18 @@ export class DocumentConverter {
    */
   private static buildDocxPackage(
     paragraphsXml: string,
-    documentTitle: string
+    documentTitle: string,
+    options?: {
+      landscape?: boolean;
+      narrowMargins?: boolean;
+    }
   ): Blob {
+    const isLandscape = Boolean(options?.landscape);
+    const marginDxa = options?.narrowMargins ? 500 : isLandscape ? 720 : 1440;
+    const pgWidth = isLandscape ? 16838 : 11906;
+    const pgHeight = isLandscape ? 11906 : 16838;
+    const orientAttr = isLandscape ? ' w:orient="landscape"' : '';
+
     const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -526,8 +1134,8 @@ export class DocumentConverter {
   <w:body>
     ${paragraphsXml}
     <w:sectPr>
-      <w:pgSz w:w="11906" w:h="16838"/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgSz w:w="${pgWidth}" w:h="${pgHeight}"${orientAttr}/>
+      <w:pgMar w:top="${marginDxa}" w:right="${marginDxa}" w:bottom="${marginDxa}" w:left="${marginDxa}" w:header="720" w:footer="720" w:gutter="0"/>
       <w:cols w:space="720"/>
       <w:docGrid w:linePitch="360"/>
     </w:sectPr>

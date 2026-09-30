@@ -94,6 +94,18 @@ const engineMap: Record<string, () => Promise<EngineModule>> = {
     import('./engines/document-engines').then((m) => ({
       runConversion: m.csvToJsonEngine.runConversion,
     })),
+  'document:csv:pdf': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.csvToPdfEngine.runConversion,
+    })),
+  'document:csv:docx': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.csvToDocxEngine.runConversion,
+    })),
+  'document:csv:xlsx': () =>
+    import('./engines/document-engines').then((m) => ({
+      runConversion: m.csvToXlsxEngine.runConversion,
+    })),
   'document:json:csv': () =>
     import('./engines/document-engines').then((m) => ({
       runConversion: m.jsonToCsvEngine.runConversion,

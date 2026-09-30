@@ -109,6 +109,21 @@ async function loadEngineModule(engineId: string) {
         engineModules[engineId] = mod.csvToJsonEngine;
         break;
       }
+      case 'document:csv:pdf': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.csvToPdfEngine;
+        break;
+      }
+      case 'document:csv:docx': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.csvToDocxEngine;
+        break;
+      }
+      case 'document:csv:xlsx': {
+        const mod = await import('../lib/engines/document-engines');
+        engineModules[engineId] = mod.csvToXlsxEngine;
+        break;
+      }
       case 'document:json:csv': {
         const mod = await import('../lib/engines/document-engines');
         engineModules[engineId] = mod.jsonToCsvEngine;

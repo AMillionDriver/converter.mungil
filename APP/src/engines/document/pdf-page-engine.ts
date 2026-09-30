@@ -1,13 +1,14 @@
 import { PDFDocument, degrees } from 'pdf-lib';
 
 export interface PageOperation {
-  originalIndex: number; // 0-indexed position in source PDF
+  originalIndex: number; // 0-indexed position in source PDF, or -1 for blank page
   rotation: number; // degrees to rotate: 0, 90, 180, 270
+  isBlank?: boolean;
 }
 
 export class PdfPageEngine {
   /**
-   * Applies reordering, rotation, and page extraction/deletion to a PDF file.
+   * Applies reordering, rotation, page extraction/deletion, and blank page insertion to a PDF file.
    * Returns a new PDF Blob containing only the requested pages in the new order.
    */
   static async processPages(
@@ -23,26 +24,40 @@ export class PdfPageEngine {
     const newDoc = await PDFDocument.create();
 
     const totalPages = srcDoc.getPageCount();
+    const firstPageSize =
+      totalPages > 0
+        ? srcDoc.getPage(0).getSize()
+        : { width: 595.28, height: 841.89 };
+
     for (const op of operations) {
-      if (op.originalIndex < 0 || op.originalIndex >= totalPages) {
-        throw new Error(
-          `Indeks halaman ${op.originalIndex + 1} tidak valid (Total: ${totalPages}).`
-        );
+      if (!op.isBlank && op.originalIndex !== -1) {
+        if (op.originalIndex < 0 || op.originalIndex >= totalPages) {
+          throw new Error(
+            `Indeks halaman ${op.originalIndex + 1} tidak valid (Total: ${totalPages}).`
+          );
+        }
       }
     }
 
-    const pageIndices = operations.map((op) => op.originalIndex);
-    const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
+    for (const op of operations) {
+      if (op.isBlank || op.originalIndex === -1) {
+        const blankPage = newDoc.addPage([
+          firstPageSize.width,
+          firstPageSize.height,
+        ]);
+        if (op.rotation !== 0) {
+          const normalizedRotation = ((op.rotation % 360) + 360) % 360;
+          blankPage.setRotation(degrees(normalizedRotation));
+        }
+      } else {
+        const [copiedPage] = await newDoc.copyPages(srcDoc, [op.originalIndex]);
+        const currentRotation = copiedPage.getRotation().angle || 0;
+        const normalizedRotation =
+          (((currentRotation + op.rotation) % 360) + 360) % 360;
 
-    for (let i = 0; i < copiedPages.length; i++) {
-      const page = copiedPages[i];
-      const op = operations[i];
-
-      const currentRotation = page.getRotation().angle || 0;
-      const normalizedRotation = (((currentRotation + op.rotation) % 360) + 360) % 360;
-
-      page.setRotation(degrees(normalizedRotation));
-      newDoc.addPage(page);
+        copiedPage.setRotation(degrees(normalizedRotation));
+        newDoc.addPage(copiedPage);
+      }
     }
 
     const pdfBytes = await newDoc.save();

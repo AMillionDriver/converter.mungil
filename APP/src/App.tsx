@@ -13,6 +13,10 @@ import { AdBanner } from './components/AdBanner';
 import { FilePreviewModal } from './components/FilePreviewModal';
 import { PdfPageManagerModal } from './components/PdfPageManagerModal';
 import {
+  BatchResultView,
+  type ConvertedBatchItem,
+} from './components/BatchResultView';
+import {
   ExifEngine,
   type ExifData,
   type ExifResult,
@@ -143,9 +147,29 @@ function Dropzone({
   const [isMerging, setIsMerging] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<File | null>(null);
   const [pageManagerTarget, setPageManagerTarget] = useState<File | null>(null);
+  const [batchResults, setBatchResults] = useState<ConvertedBatchItem[] | null>(
+    null
+  );
+  const [batchProgress, setBatchProgress] = useState<{
+    current: number;
+    total: number;
+    currentFileName: string;
+  } | null>(null);
+  const [pageEditNotice, setPageEditNotice] = useState<{
+    filename: string;
+    isExtracted: boolean;
+    pageCount: number;
+    indicesText?: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const { runConversion, status, progress } = useConversion();
+
+  useEffect(() => {
+    if (uploadedFiles.length === 0) {
+      setPageEditNotice(null);
+    }
+  }, [uploadedFiles]);
 
   useEffect(() => {
     let active = true;
@@ -176,7 +200,8 @@ function Dropzone({
 
   const isPdfMerge =
     uploadedFiles.length > 1 &&
-    uploadedFiles.every((f) => f.name.toLowerCase().endsWith('.pdf'));
+    uploadedFiles.every((f) => f.name.toLowerCase().endsWith('.pdf')) &&
+    selectedFormat === 'merge';
 
   const handleFiles = async (
     files: FileList | null,
@@ -265,12 +290,13 @@ function Dropzone({
       ? [...uploadedFiles, ...sanitizedFiles]
       : sanitizedFiles;
     setUploadedFiles(nextFiles);
+    setBatchResults(null);
 
     const allPdfs = nextFiles.every((f) =>
       f.name.toLowerCase().endsWith('.pdf')
     );
     if (allPdfs && nextFiles.length > 1) {
-      setAvailableFormats(['merge']);
+      setAvailableFormats(['merge', 'docx', 'txt']);
       setSelectedFormat('merge');
       return;
     }
@@ -286,7 +312,7 @@ function Dropzone({
           !(ext === 'jpeg' && f === 'jpg')
       );
       const formats =
-        crossFormats.length > 0 ? [...crossFormats, ext] : allOutputs;
+        crossFormats.length > 0 ? crossFormats : allOutputs;
       if (formats.length === 0) {
         alert(`No conversion options available for .${ext} files`);
         setUploadedFiles([]);
@@ -295,15 +321,38 @@ function Dropzone({
       setAvailableFormats(formats);
       setSelectedFormat(formats[0]);
     } else {
-      // Multiple non-PDF images -> option to convert all to 1 PDF
-      const allImages = nextFiles.every((f) =>
-        ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico'].includes(
-          f.name.split('.').pop()?.toLowerCase() || ''
+      // Multiple files: calculate intersection of supported formats
+      const exts = nextFiles.map(
+        (f) => f.name.split('.').pop()?.toLowerCase() || ''
+      );
+      const allImages = exts.every((e) =>
+        ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico'].includes(e)
+      );
+
+      // Find formats that ALL uploaded files can convert to
+      const firstOutputs = engineRegistry.getSupportedOutputFormats(exts[0]);
+      const common = firstOutputs.filter((outFmt) =>
+        exts.every((e) =>
+          engineRegistry.getSupportedOutputFormats(e).includes(outFmt)
         )
       );
+
       if (allImages) {
-        setAvailableFormats(['pdf']);
-        setSelectedFormat('pdf');
+        const imageCommon = ['webp', 'jpg', 'png', 'ico'].filter(
+          (fmt) => common.includes(fmt) || ['webp', 'jpg', 'png'].includes(fmt)
+        );
+        const combined = [...new Set([...imageCommon, 'pdf'])];
+        setAvailableFormats(combined);
+        setSelectedFormat(combined[0] || 'webp');
+      } else if (common.length > 0) {
+        setAvailableFormats(common);
+        setSelectedFormat(common[0]);
+      } else {
+        alert(
+          'File yang dipilih tidak memiliki format konversi bersama yang kompatibel.'
+        );
+        setUploadedFiles([]);
+        return;
       }
     }
   };
@@ -322,59 +371,157 @@ function Dropzone({
   const handleConvert = async () => {
     if (uploadedFiles.length === 0) return;
 
-    // PDF Merge Mode
-    if (isPdfMerge) {
-      if (uploadedFiles.length < 2) {
-        alert(
-          'Silakan pilih minimal 2 file PDF untuk digabungkan menjadi 1 file.'
-        );
+    // Check if multiple files
+    if (uploadedFiles.length > 1) {
+      // 1. PDF Merge Mode
+      if (isPdfMerge) {
+        if (uploadedFiles.length < 2) {
+          alert(
+            'Silakan pilih minimal 2 file PDF untuk digabungkan menjadi 1 file.'
+          );
+          return;
+        }
+
+        try {
+          setIsMerging(true);
+          const { PdfEngine } = await import('./engines/document/pdf-merge');
+          const outputBlob = await PdfEngine.process({
+            type: 'merge',
+            files: uploadedFiles,
+            options: {},
+          });
+          const mergedName = `merged-${Date.now()}.pdf`;
+          await DownloadManager.download(outputBlob, {
+            filename: mergedName,
+            mimeType: 'application/pdf',
+          });
+          setBatchResults([
+            {
+              id: `merge-${Date.now()}`,
+              originalName: `${uploadedFiles.length} file PDF`,
+              filename: mergedName,
+              blob: outputBlob,
+              mimeType: 'application/pdf',
+              size: outputBlob.size,
+            },
+          ]);
+          setUploadedFiles([]);
+        } catch (err) {
+          alert(
+            `Gagal menggabungkan PDF: ${err instanceof Error ? err.message : 'Unknown error'}`
+          );
+        } finally {
+          setIsMerging(false);
+        }
         return;
       }
 
-      try {
-        setIsMerging(true);
-        const { PdfEngine } = await import('./engines/document/pdf-merge');
-        const outputBlob = await PdfEngine.process({
-          type: 'merge',
-          files: uploadedFiles,
-          options: {},
-        });
-        await DownloadManager.download(outputBlob, {
-          filename: `merged-${Date.now()}.pdf`,
-          mimeType: 'application/pdf',
-        });
-        setUploadedFiles([]);
-      } catch (err) {
-        alert(
-          `Gagal menggabungkan PDF: ${err instanceof Error ? err.message : 'Unknown error'}`
-        );
-      } finally {
-        setIsMerging(false);
+      // 2. Multiple Images to Single PDF Mode
+      const allImages = uploadedFiles.every((f) =>
+        ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico'].includes(
+          f.name.split('.').pop()?.toLowerCase() || ''
+        )
+      );
+      if (allImages && selectedFormat === 'pdf') {
+        try {
+          setIsMerging(true);
+          const { PdfEngine } = await import('./engines/document/pdf-merge');
+          const outputBlob = await PdfEngine.process({
+            type: 'image-to-pdf',
+            files: uploadedFiles,
+            options: {},
+          });
+          const combinedName = `images-combined-${Date.now()}.pdf`;
+          await DownloadManager.download(outputBlob, {
+            filename: combinedName,
+            mimeType: 'application/pdf',
+          });
+          setBatchResults([
+            {
+              id: `combine-${Date.now()}`,
+              originalName: `${uploadedFiles.length} file gambar`,
+              filename: combinedName,
+              blob: outputBlob,
+              mimeType: 'application/pdf',
+              size: outputBlob.size,
+            },
+          ]);
+          setUploadedFiles([]);
+        } catch (err) {
+          alert(
+            `Gagal membuat PDF: ${err instanceof Error ? err.message : 'Unknown error'}`
+          );
+        } finally {
+          setIsMerging(false);
+        }
+        return;
       }
-      return;
-    }
 
-    // Multiple Images to Single PDF Mode
-    if (uploadedFiles.length > 1 && selectedFormat === 'pdf') {
+      // 3. Batch Individual Conversion for Each File
       try {
         setIsMerging(true);
-        const { PdfEngine } = await import('./engines/document/pdf-merge');
-        const outputBlob = await PdfEngine.process({
-          type: 'image-to-pdf',
-          files: uploadedFiles,
-          options: {},
-        });
-        await DownloadManager.download(outputBlob, {
-          filename: `images-combined-${Date.now()}.pdf`,
-          mimeType: 'application/pdf',
-        });
+        const convertedItems: ConvertedBatchItem[] = [];
+        const total = uploadedFiles.length;
+
+        for (let i = 0; i < total; i++) {
+          const file = uploadedFiles[i];
+          const extension = file.name.split('.').pop()?.toLowerCase() || '';
+          setBatchProgress({
+            current: i + 1,
+            total,
+            currentFileName: file.name,
+          });
+
+          const engine = await ConversionPipeline.resolveAndLoad(
+            extension,
+            selectedFormat
+          );
+
+          const options: Record<string, unknown> = {};
+          if (enableCompression) {
+            options.quality = compressionQuality;
+          }
+
+          const outputBlob = await runConversion(engine.id, file, options);
+          const filename = DownloadManager.generateFilename(
+            file.name,
+            selectedFormat
+          );
+
+          let mimeType = `image/${selectedFormat}`;
+          if (selectedFormat === 'pdf') mimeType = 'application/pdf';
+          else if (selectedFormat === 'docx')
+            mimeType =
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (selectedFormat === 'txt')
+            mimeType = 'text/plain;charset=utf-8';
+          else if (selectedFormat === 'csv')
+            mimeType = 'text/csv;charset=utf-8';
+          else if (selectedFormat === 'json') mimeType = 'application/json';
+          else if (selectedFormat === 'ico') mimeType = 'image/x-icon';
+          else if (selectedFormat === 'bmp') mimeType = 'image/bmp';
+          else if (selectedFormat === 'jpg' || selectedFormat === 'jpeg')
+            mimeType = 'image/jpeg';
+
+          convertedItems.push({
+            id: `${file.name}-${Date.now()}-${i}`,
+            originalName: file.name,
+            filename,
+            blob: outputBlob,
+            mimeType,
+            size: outputBlob.size,
+          });
+        }
+
+        setBatchResults(convertedItems);
         setUploadedFiles([]);
       } catch (err) {
         alert(
-          `Gagal membuat PDF: ${err instanceof Error ? err.message : 'Unknown error'}`
+          `Gagal konversi batch: ${err instanceof Error ? err.message : 'Unknown error'}`
         );
       } finally {
         setIsMerging(false);
+        setBatchProgress(null);
       }
       return;
     }
@@ -417,6 +564,16 @@ function Dropzone({
               filename,
               mimeType: 'application/pdf',
             });
+            setBatchResults([
+              {
+                id: `single-${Date.now()}`,
+                originalName: targetFile.name,
+                filename,
+                blob: outputBlob,
+                mimeType: 'application/pdf',
+                size: outputBlob.size,
+              },
+            ]);
             setUploadedFiles([]);
             setKeepCurrent(false);
             setEnableCompression(false);
@@ -497,6 +654,17 @@ function Dropzone({
           mimeType,
         });
 
+        setBatchResults([
+          {
+            id: `single-${Date.now()}`,
+            originalName: targetFile.name,
+            filename,
+            blob: finalBlob,
+            mimeType,
+            size: finalBlob.size,
+          },
+        ]);
+
         setUploadedFiles([]);
         setKeepCurrent(false);
         setEnableCompression(false);
@@ -543,7 +711,7 @@ function Dropzone({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-8
+        group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-4 sm:p-8
         transition-all duration-200 ease-in-out
         ${
           isDragging
@@ -576,13 +744,25 @@ function Dropzone({
       <input
         type="file"
         multiple
-        accept=".pdf"
         ref={addMoreInputRef}
         className="hidden"
         onChange={(e) => handleFiles(e.target.files, true)}
       />
 
-      {uploadedFiles.length === 0 ? (
+      {batchResults && batchResults.length > 0 ? (
+        <div className="relative z-10 w-full py-2">
+          <BatchResultView
+            results={batchResults}
+            onReset={() => {
+              setBatchResults(null);
+              setUploadedFiles([]);
+              setKeepCurrent(false);
+              setEnableCompression(false);
+            }}
+            onPreview={(file) => setPreviewTarget(file)}
+          />
+        </div>
+      ) : uploadedFiles.length === 0 ? (
         <div className="relative z-10 flex flex-col items-center text-center">
           <div
             className={`
@@ -610,59 +790,143 @@ function Dropzone({
         </div>
       ) : (
         <div className="relative z-10 flex flex-col items-center text-center py-2">
-          {isPdfMerge ? (
-            <div className="w-full max-w-md mb-6">
+          {uploadedFiles.length > 1 ? (
+            <div className="w-full max-w-lg mb-6">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-slate-900">
-                  File PDF ({uploadedFiles.length} file)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => addMoreInputRef.current?.click()}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition"
-                >
-                  + Tambah PDF Lagi
-                </button>
-              </div>
-              <ul className="max-h-48 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50 p-2 text-left text-xs text-slate-700">
-                {uploadedFiles.map((f, i) => (
-                  <li
-                    key={`${f.name}-${i}`}
-                    className="flex items-center justify-between py-1.5 px-2"
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-900">
+                    Daftar File ({uploadedFiles.length} file)
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {(
+                      uploadedFiles.reduce((acc, f) => acc + f.size, 0) /
+                      1024 /
+                      1024
+                    ).toFixed(2)}{' '}
+                    MB
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => addMoreInputRef.current?.click()}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition"
                   >
-                    <span className="truncate pr-2 font-medium">{f.name}</span>
-                    <div className="flex items-center gap-2 ml-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewTarget(f)}
-                        className="text-indigo-600 hover:text-indigo-800 font-medium transition"
-                      >
-                        Pratinjau
-                      </button>
-                      {f.name.toLowerCase().endsWith('.pdf') && (
+                    + Tambah File Lagi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUploadedFiles([])}
+                    className="text-xs font-medium text-rose-500 hover:text-rose-700 transition"
+                  >
+                    Hapus Semua
+                  </button>
+                </div>
+              </div>
+              <ul className="max-h-52 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-200 bg-slate-50/70 p-2 text-left text-xs text-slate-700">
+                {uploadedFiles.map((f, i) => {
+                  const ext = f.name.split('.').pop()?.toUpperCase() || 'FILE';
+                  const isPdf = f.name.toLowerCase().endsWith('.pdf');
+                  return (
+                    <li
+                      key={`${f.name}-${i}`}
+                      className="flex items-center justify-between py-2 px-2 hover:bg-white rounded-lg transition"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                        <span className="rounded bg-slate-200/80 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-700 shrink-0">
+                          {ext}
+                        </span>
+                        <span className="truncate font-medium text-slate-800">
+                          {f.name}
+                        </span>
+                        {f.name.includes('_ekstrak') && (
+                          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800 shrink-0">
+                            Ekstrak
+                          </span>
+                        )}
+                        <span className="text-[11px] text-slate-400 shrink-0">
+                          ({(f.size / 1024 / 1024).toFixed(2)} MB)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
-                          onClick={() => setPageManagerTarget(f)}
+                          onClick={() => setPreviewTarget(f)}
                           className="text-indigo-600 hover:text-indigo-800 font-medium transition"
                         >
-                          Kelola Halaman
+                          Pratinjau
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => removeFile(i)}
-                        className="text-rose-500 hover:text-rose-700 font-medium transition"
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                        {isPdf && (
+                          <button
+                            type="button"
+                            onClick={() => setPageManagerTarget(f)}
+                            className="text-indigo-600 hover:text-indigo-800 font-medium transition"
+                          >
+                            Kelola Halaman
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeFile(i)}
+                          className="text-rose-500 hover:text-rose-700 font-medium transition"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
-              {uploadedFiles.length < 2 && (
-                <p className="mt-2 text-xs text-amber-600">
-                  Tambahkan minimal 1 file PDF lagi untuk mulai menggabungkan.
-                </p>
+
+              {/* Format selection for multiple files */}
+              <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Konversi Semua ke:
+                  </label>
+                  <select
+                    value={selectedFormat}
+                    onChange={(e) => setSelectedFormat(e.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 shadow-xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  >
+                    {availableFormats.map((format) => (
+                      <option key={format} value={format}>
+                        {format === 'merge'
+                          ? 'GABUNGKAN KE 1 PDF (MERGE)'
+                          : format.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Batch progress */}
+              {batchProgress && (
+                <div className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 text-left">
+                  <div className="flex items-center justify-between text-xs font-semibold text-indigo-900 mb-1">
+                    <span>
+                      Mengonversi File {batchProgress.current} dari{' '}
+                      {batchProgress.total}
+                    </span>
+                    <span>
+                      {Math.round(
+                        (batchProgress.current / batchProgress.total) * 100
+                      )}
+                      %
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-indigo-600 truncate mb-1.5">
+                    {batchProgress.currentFileName}
+                  </p>
+                  <div className="w-full h-1.5 bg-indigo-200/60 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-600 transition-all duration-300"
+                      style={{
+                        width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           ) : (
@@ -710,20 +974,165 @@ function Dropzone({
                 </div>
               ) : null}
 
-              <p className="text-sm font-semibold text-slate-900 mb-1">
-                {uploadedFiles[0].name}
-              </p>
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <span className="text-xs text-slate-500">
+              {/* Notice Banner when extracted or pages modified */}
+              {pageEditNotice &&
+                uploadedFiles[0] &&
+                (pageEditNotice.filename === uploadedFiles[0].name ||
+                  uploadedFiles[0].name.includes('_ekstrak')) && (
+                  <div className="mb-3.5 mx-auto max-w-md flex items-center justify-between gap-2.5 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-left text-xs text-emerald-950 shadow-xs animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white mt-0.5 shadow-2xs">
+                        <svg
+                          className="size-3"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m4.5 12.75 6 6 9-13.5"
+                          />
+                        </svg>
+                      </div>
+                      <div className="leading-snug min-w-0">
+                        <p className="font-bold text-emerald-900">
+                          {pageEditNotice.isExtracted
+                            ? `Berhasil Mengekstrak ${pageEditNotice.pageCount} Halaman!`
+                            : `Susunan ${pageEditNotice.pageCount} Halaman Berhasil Diterapkan!`}
+                        </p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5">
+                          {pageEditNotice.isExtracted
+                            ? `Dokumen kini memuat ${
+                                pageEditNotice.indicesText
+                                  ? `halaman (${pageEditNotice.indicesText})`
+                                  : `${pageEditNotice.pageCount} halaman terpilih`
+                              }. File siap dikonversi ke format tujuan.`
+                            : 'Perubahan urutan dan rotasi telah diterapkan pada dokumen aktif.'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPageEditNotice(null)}
+                      className="text-emerald-500 hover:text-emerald-800 p-1 rounded-md transition shrink-0"
+                      title="Tutup pemberitahuan"
+                    >
+                      <svg
+                        className="size-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M6 18 18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+
+              <div className="flex flex-wrap items-center justify-center gap-1.5 mb-1.5">
+                <p className="text-sm font-semibold text-slate-900 break-all max-w-md">
+                  {uploadedFiles[0].name}
+                </p>
+                {(pageEditNotice?.filename === uploadedFiles[0].name ||
+                  uploadedFiles[0].name.includes('_ekstrak')) && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200 shrink-0">
+                    <svg
+                      className="size-2.5 text-emerald-700"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m4.5 12.75 6 6 9-13.5"
+                      />
+                    </svg>
+                    Terekstrak
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+                {/* Page Count Badge for PDF */}
+                {uploadedFiles[0].name.toLowerCase().endsWith('.pdf') && (
+                  <>
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200/80 shadow-2xs"
+                      title="Jumlah halaman dokumen saat ini"
+                    >
+                      <svg
+                        className="size-3 text-indigo-600"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                        />
+                      </svg>
+                      {activeDocMetadata?.pageCount ||
+                        pageEditNotice?.pageCount ||
+                        '1'}{' '}
+                      Halaman
+                    </span>
+                    <span className="text-slate-300">•</span>
+                  </>
+                )}
+
+                {/* Row/Col Count Badge for CSV */}
+                {uploadedFiles[0].name.toLowerCase().endsWith('.csv') && (
+                  <>
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200/80 shadow-2xs"
+                      title="Jumlah baris dan kolom tabel CSV"
+                    >
+                      <svg
+                        className="size-3 text-emerald-600"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"
+                        />
+                      </svg>
+                      {activeDocMetadata?.rowCount !== undefined
+                        ? `${activeDocMetadata.rowCount.toLocaleString()} Baris`
+                        : 'Tabel Data'}
+                      {activeDocMetadata?.colCount
+                        ? ` • ${activeDocMetadata.colCount} Kolom`
+                        : ''}
+                    </span>
+                    <span className="text-slate-300">•</span>
+                  </>
+                )}
+
+                <span className="text-xs text-slate-500 font-medium">
                   {(uploadedFiles[0].size / 1024 / 1024).toFixed(2)} MB
                 </span>
+
                 <button
                   type="button"
                   onClick={() => setPreviewTarget(uploadedFiles[0])}
-                  className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition active:scale-95 border border-indigo-100"
+                  className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200 transition active:scale-95 border border-slate-200"
                 >
                   <svg
-                    className="size-3 text-indigo-600"
+                    className="size-3 text-slate-600"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
@@ -740,8 +1149,48 @@ function Dropzone({
                       d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
                     />
                   </svg>
-                  <span>Pratinjau File</span>
+                  <span>
+                    {uploadedFiles[0].name.toLowerCase().endsWith('.csv')
+                      ? 'Pratinjau Tabel'
+                      : 'Pratinjau File'}
+                  </span>
                 </button>
+
+                {/* CSV Direct ZIP Download */}
+                {uploadedFiles[0].name.toLowerCase().endsWith('.csv') && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await DownloadManager.downloadZip(
+                        [
+                          {
+                            name: uploadedFiles[0].name,
+                            blob: uploadedFiles[0],
+                          },
+                        ],
+                        uploadedFiles[0].name.replace(/\.[^/.]+$/, '.zip')
+                      );
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition active:scale-95 border border-indigo-100"
+                    title="Kompres berkas CSV ini menjadi format .ZIP"
+                  >
+                    <svg
+                      className="size-3 text-indigo-600"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
+                      />
+                    </svg>
+                    <span>Unduh .ZIP</span>
+                  </button>
+                )}
+
                 {uploadedFiles[0].name.toLowerCase().endsWith('.pdf') && (
                   <button
                     type="button"
@@ -831,96 +1280,129 @@ function Dropzone({
               </div>
 
               {/* Box Kompres Ukuran File */}
-              <div className="mt-4 w-full max-w-md mx-auto rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-left transition-all">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={enableCompression}
-                      onChange={(e) => setEnableCompression(e.target.checked)}
-                      className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div>
-                      <span className="text-sm font-semibold text-slate-900">
-                        Kompres Ukuran File
-                      </span>
-                      <p className="text-xs text-slate-500">
-                        Perkecil ukuran tanpa merusak kualitas visual
-                      </p>
-                    </div>
-                  </label>
-                  {enableCompression && (
-                    <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-200">
-                      {compressionQuality}% Kualitas
-                    </span>
-                  )}
-                </div>
+              {(() => {
+                const activeExt =
+                  uploadedFiles[0]?.name.split('.').pop()?.toLowerCase() || '';
+                const effectiveFormat = keepCurrent
+                  ? activeExt
+                  : selectedFormat;
+                const isVisualCompressible =
+                  ['jpg', 'jpeg', 'webp', 'png', 'avif'].includes(
+                    effectiveFormat
+                  ) ||
+                  (effectiveFormat === 'pdf' && keepCurrent);
 
-                {enableCompression && (
-                  <div className="mt-3 pt-3 border-t border-slate-200/70 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium text-slate-600">
-                        Level Kompresi:
-                      </span>
-                      <span className="font-semibold text-indigo-600">
-                        {compressionQuality >= 85
-                          ? 'Ringan (Kualitas Maksimal)'
-                          : compressionQuality >= 70
-                            ? 'Seimbang (Rekomendasi Web)'
-                            : 'Ekstrem (Ukuran Terkecil)'}
-                      </span>
+                if (!isVisualCompressible) return null;
+
+                return (
+                  <div className="mt-4 w-full max-w-md mx-auto rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-left transition-all">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={enableCompression}
+                          onChange={(e) =>
+                            setEnableCompression(e.target.checked)
+                          }
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <span className="text-sm font-semibold text-slate-900">
+                            Kompres Ukuran File
+                          </span>
+                          <p className="text-xs text-slate-500">
+                            Perkecil ukuran tanpa merusak kualitas visual
+                          </p>
+                        </div>
+                      </label>
+                      {enableCompression && (
+                        <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-200">
+                          {compressionQuality}% Kualitas
+                        </span>
+                      )}
                     </div>
-                    <input
-                      type="range"
-                      min="40"
-                      max="95"
-                      step="5"
-                      value={compressionQuality}
-                      onChange={(e) =>
-                        setCompressionQuality(Number(e.target.value))
-                      }
-                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                    />
-                    <div className="flex justify-between text-[11px] text-slate-400">
-                      <span>Ekstrem (40%)</span>
-                      <span>Seimbang (75%)</span>
-                      <span>Maksimal (95%)</span>
-                    </div>
+
+                    {enableCompression && (
+                      <div className="mt-3 pt-3 border-t border-slate-200/70 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-slate-600">
+                            Level Kompresi:
+                          </span>
+                          <span className="font-semibold text-indigo-600">
+                            {compressionQuality >= 85
+                              ? 'Ringan (Kualitas Maksimal)'
+                              : compressionQuality >= 70
+                                ? 'Seimbang (Rekomendasi Web)'
+                                : 'Ekstrem (Ukuran Terkecil)'}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="40"
+                          max="95"
+                          step="5"
+                          value={compressionQuality}
+                          onChange={(e) =>
+                            setCompressionQuality(Number(e.target.value))
+                          }
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                        />
+                        <div className="flex justify-between text-[11px] text-slate-400">
+                          <span>Ekstrem (40%)</span>
+                          <span>Seimbang (75%)</span>
+                          <span>Maksimal (95%)</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-col-reverse sm:flex-row items-center justify-center gap-2.5 sm:gap-3 w-full sm:w-auto">
             <button
               onClick={() => {
                 setUploadedFiles([]);
                 setKeepCurrent(false);
                 setEnableCompression(false);
               }}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+              className="w-full sm:w-auto rounded-lg px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 text-center"
             >
               Batal
             </button>
             <button
               disabled={isBusy || (isPdfMerge && uploadedFiles.length < 2)}
               onClick={handleConvert}
-              className={`rounded-lg px-6 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95 ${
+              className={`w-full sm:w-auto rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95 text-center ${
                 isBusy || (isPdfMerge && uploadedFiles.length < 2)
                   ? 'bg-slate-400 cursor-not-allowed'
                   : 'bg-indigo-600'
               }`}
             >
               {isBusy
-                ? `Memproses ${progress > 0 ? `${progress}%` : '...'}`
+                ? `Memproses ${batchProgress ? `(${batchProgress.current}/${batchProgress.total})` : progress > 0 ? `${progress}%` : '...'}`
                 : isPdfMerge
-                  ? 'Gabungkan PDF'
-                  : keepCurrent && enableCompression
-                    ? 'Kompres File Sekarang'
-                    : keepCurrent
-                      ? 'Simpan File Asli'
-                      : 'Konversi Sekarang'}
+                  ? 'Gabungkan Semua PDF'
+                  : uploadedFiles.length > 1
+                    ? selectedFormat === 'pdf'
+                      ? 'Gabungkan ke 1 Dokumen PDF'
+                      : `Konversi Semua (${uploadedFiles.length} File)`
+                    : keepCurrent && enableCompression
+                      ? activeDocMetadata?.pageCount
+                        ? `Kompres ${activeDocMetadata.pageCount} Halaman (PDF)`
+                        : 'Kompres File Sekarang'
+                      : keepCurrent
+                        ? activeDocMetadata?.pageCount
+                          ? `Simpan ${activeDocMetadata.pageCount} Halaman (PDF)`
+                          : 'Simpan File Asli'
+                        : activeDocMetadata?.pageCount &&
+                            uploadedFiles[0]?.name.toLowerCase().endsWith('.pdf')
+                          ? `Konversi ${activeDocMetadata.pageCount} Halaman ke ${selectedFormat.toUpperCase()}`
+                          : activeDocMetadata?.rowCount !== undefined &&
+                              uploadedFiles[0]?.name.toLowerCase().endsWith('.csv')
+                            ? `Konversi ${activeDocMetadata.rowCount.toLocaleString()} Baris ke ${selectedFormat.toUpperCase()}`
+                            : 'Konversi Sekarang'}
             </button>
           </div>
         </div>
@@ -939,10 +1421,21 @@ function Dropzone({
           file={pageManagerTarget}
           isOpen={Boolean(pageManagerTarget)}
           onClose={() => setPageManagerTarget(null)}
-          onApply={(updatedFile) => {
+          onApply={(updatedFile, meta) => {
+            const target = pageManagerTarget;
             setUploadedFiles((prev) =>
-              prev.map((f) => (f.name === updatedFile.name ? updatedFile : f))
+              prev.map((f) =>
+                f === target || f.name === target?.name ? updatedFile : f
+              )
             );
+            if (meta) {
+              setPageEditNotice({
+                filename: updatedFile.name,
+                isExtracted: meta.isExtracted,
+                pageCount: meta.pageCount,
+                indicesText: meta.extractedIndices?.join(', '),
+              });
+            }
             setPageManagerTarget(null);
           }}
         />
@@ -952,6 +1445,12 @@ function Dropzone({
 }
 
 function Footer() {
+  const [openSection, setOpenSection] = useState<string | null>(null);
+
+  const toggleSection = (category: string) => {
+    setOpenSection((prev) => (prev === category ? null : category));
+  };
+
   const footerLinks = {
     'Alat Konversi': [
       { name: 'PDF ke Word', href: '#pdf-to-word' },
@@ -981,27 +1480,59 @@ function Footer() {
 
   return (
     <footer className="bg-slate-100 border-t border-slate-200">
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
-          {Object.entries(footerLinks).map(([category, links]) => (
-            <div key={category}>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 mb-6">
-                {category}
-              </h3>
-              <ul className="space-y-4">
-                {links.map((link) => (
-                  <li key={link.name}>
-                    <a
-                      href={link.href}
-                      className="text-sm text-slate-600 transition hover:text-indigo-600"
-                    >
-                      {link.name}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+        <div className="grid gap-3 sm:gap-6 md:gap-12 md:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(footerLinks).map(([category, links]) => {
+            const isOpen = openSection === category;
+            return (
+              <div
+                key={category}
+                className="border-b border-slate-200/80 pb-3 md:border-b-0 md:pb-0"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleSection(category)}
+                  className="flex w-full items-center justify-between py-2 text-left md:pointer-events-none md:py-0"
+                  aria-expanded={isOpen}
+                >
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 md:mb-6">
+                    {category}
+                  </h3>
+                  <svg
+                    className={`size-4 text-slate-500 transition-transform duration-200 md:hidden ${
+                      isOpen ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                    />
+                  </svg>
+                </button>
+                <ul
+                  className={`space-y-3 mt-2 md:mt-0 md:space-y-4 ${
+                    isOpen ? 'block pb-2' : 'hidden md:block'
+                  }`}
+                >
+                  {links.map((link) => (
+                    <li key={link.name}>
+                      <a
+                        href={link.href}
+                        className="text-sm text-slate-600 transition hover:text-indigo-600"
+                      >
+                        {link.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
 
         <div className="mt-16 border-t border-slate-200 pt-8">
@@ -1413,7 +1944,7 @@ function App() {
       </header>
 
       <main
-        className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-16 sm:px-6 lg:px-8"
+        className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-16"
         id="beranda"
       >
         <div className="w-full">
@@ -1532,10 +2063,10 @@ function App() {
             {/* Kolom Tengah - Core Tool */}
             <section
               aria-labelledby="tool-title"
-              className="w-full lg:max-w-3xl"
+              className="w-full max-w-3xl mx-auto"
             >
               <h1
-                className="mb-6 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl"
+                className="mb-4 sm:mb-6 text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900"
                 id="tool-title"
               >
                 Konversikan file dengan mudah
@@ -1733,7 +2264,7 @@ function App() {
                 </div>
 
                 {/* Mobile Ad Banner */}
-                <div className="mt-8 block lg:hidden w-full">
+                <div className="mt-8 block lg:hidden w-full max-w-sm mx-auto">
                   <AdBanner
                     slotId="9876543210"
                     format="rectangle"

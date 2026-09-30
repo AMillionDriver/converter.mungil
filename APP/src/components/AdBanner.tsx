@@ -105,12 +105,19 @@ export function AdBanner({
       </div>
 
       {/* Ad Content Container */}
-      <div className="flex min-h-[320px] flex-col items-center justify-between rounded-xl bg-slate-50/70 p-3 text-center border border-dashed border-slate-200/80">
+      <div
+        className={`flex ${
+          format === 'rectangle' ? 'min-h-[240px]' : 'min-h-[320px]'
+        } flex-col items-center justify-between rounded-xl bg-slate-50/70 p-3 text-center border border-dashed border-slate-200/80`}
+      >
         {/* Real AdSense tag (only active when real publisher ID is present in production) */}
         {!isDummyClient && !isTest && (
           <ins
             className="adsbygoogle w-full"
-            style={{ display: 'block', minHeight: '180px' }}
+            style={{
+              display: 'block',
+              minHeight: format === 'rectangle' ? '180px' : '250px',
+            }}
             data-ad-client={clientId}
             data-ad-slot={slotId}
             data-ad-format={format}

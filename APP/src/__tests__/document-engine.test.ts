@@ -252,5 +252,136 @@ describe('PdfPageEngine', () => {
     const doc2 = await PDFDocument.load(await splitBlobs[1].arrayBuffer());
     expect(doc2.getPageCount()).toBe(2);
   });
+
+  it('should insert blank pages in requested position with rotation', async () => {
+    const { PdfPageEngine } = await import(
+      '../engines/document/pdf-page-engine'
+    );
+
+    const pdfDoc = await PDFDocument.create();
+    pdfDoc.addPage([500, 700]); // Page 1
+    const pdfBytes = await pdfDoc.save();
+    const pdfFile = new File([pdfBytes as Uint8Array<ArrayBuffer>], 'test-1page.pdf', {
+      type: 'application/pdf',
+    });
+
+    // Insert blank page before Page 1, and blank page after Page 1
+    const resultBlob = await PdfPageEngine.processPages(pdfFile, [
+      { originalIndex: -1, isBlank: true, rotation: 0 },
+      { originalIndex: 0, rotation: 0 },
+      { originalIndex: -1, isBlank: true, rotation: 90 },
+    ]);
+
+    const resultDoc = await PDFDocument.load(await resultBlob.arrayBuffer());
+    expect(resultDoc.getPageCount()).toBe(3);
+
+    const pages = resultDoc.getPages();
+    expect(pages[0].getWidth()).toBe(500);
+    expect(pages[0].getRotation().angle).toBe(0);
+
+    expect(pages[1].getWidth()).toBe(500);
+    expect(pages[1].getRotation().angle).toBe(0);
+
+    expect(pages[2].getWidth()).toBe(500);
+    expect(pages[2].getRotation().angle).toBe(90);
+  });
+
+  it('should convert CSV to DOCX preserving native Word table structure', async () => {
+    const csvContent =
+      'Nama,Kategori,Harga,Stok\nLaptop,Elektronik,15000000,10\nMouse,Aksesoris,250000,50\nKeyboard,Aksesoris,750000,25';
+    const csvFile = new File([csvContent], 'produk.csv', {
+      type: 'text/csv',
+    });
+
+    const docxBlob = await DocumentConverter.csvToDocx(csvFile);
+    expect(docxBlob.type).toBe(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    expect(docxBlob.size).toBeGreaterThan(1000);
+
+    // Verify it is a valid ZIP and contains <w:tbl> table elements
+    const fflate = await import('fflate');
+    const buffer = await docxBlob.arrayBuffer();
+    const unzipped = fflate.unzipSync(new Uint8Array(buffer));
+    expect(unzipped['word/document.xml']).toBeDefined();
+
+    const docXml = fflate.strFromU8(unzipped['word/document.xml']);
+    expect(docXml).toContain('<w:tbl>');
+    expect(docXml).toContain('<w:tblHeader/>');
+    expect(docXml).toContain('<w:tblGrid>');
+    expect(docXml).toContain('<w:gridCol');
+    expect(docXml).toContain('Laptop');
+    expect(docXml).toContain('15000000');
+    expect(docXml).toContain('Elektronik');
+  });
+
+  it('should format 20+ column CSV into Landscape DOCX with proportional column grid', async () => {
+    // Generate mock CSV with 20 columns
+    const cols = Array.from({ length: 20 }, (_, i) => `Col_${i + 1}`);
+    const rowVals = Array.from({ length: 20 }, (_, i) => `Val_${i + 1}_data`);
+    const csvContent = `${cols.join(',')}\n${rowVals.join(',')}`;
+    const csvFile = new File([csvContent], 'wide_data.csv', { type: 'text/csv' });
+
+    const docxBlob = await DocumentConverter.csvToDocx(csvFile);
+    const fflate = await import('fflate');
+    const buffer = await docxBlob.arrayBuffer();
+    const unzipped = fflate.unzipSync(new Uint8Array(buffer));
+    const docXml = fflate.strFromU8(unzipped['word/document.xml']);
+
+    // Must be landscape
+    expect(docXml).toContain('w:orient="landscape"');
+    // Must have <w:tblGrid> with 20 <w:gridCol> elements
+    expect(docXml).toContain('<w:tblGrid>');
+    const gridCols = docXml.match(/<w:gridCol\b/g);
+    expect(gridCols?.length).toBe(20);
+    // Must have <w:cantSplit/>
+    expect(docXml).toContain('<w:cantSplit/>');
+  });
+
+  it('should convert CSV to native Excel (.XLSX) with frozen header and styles', async () => {
+    const csvContent =
+      'ID,Product,Price,Quantity\n101,Monitor 4K,4500000,5\n102,USB Cable,50000,120';
+    const csvFile = new File([csvContent], 'inventory.csv', { type: 'text/csv' });
+
+    const xlsxBlob = await DocumentConverter.csvToXlsx(csvFile);
+    expect(xlsxBlob.type).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    expect(xlsxBlob.size).toBeGreaterThan(1000);
+
+    const fflate = await import('fflate');
+    const buffer = await xlsxBlob.arrayBuffer();
+    const unzipped = fflate.unzipSync(new Uint8Array(buffer));
+
+    // Verify OpenXML Spreadsheet package structure
+    expect(unzipped['[Content_Types].xml']).toBeDefined();
+    expect(unzipped['xl/workbook.xml']).toBeDefined();
+    expect(unzipped['xl/styles.xml']).toBeDefined();
+    expect(unzipped['xl/worksheets/sheet1.xml']).toBeDefined();
+
+    const sheetXml = fflate.strFromU8(unzipped['xl/worksheets/sheet1.xml']);
+    // Frozen pane on row 1
+    expect(sheetXml).toContain('state="frozen"');
+    expect(sheetXml).toContain('ySplit="1"');
+    // Product data present
+    expect(sheetXml).toContain('Monitor 4K');
+    expect(sheetXml).toContain('4500000');
+  });
+
+  it('should convert CSV to PDF preserving grid layout and pagination', async () => {
+    const csvContent =
+      'ID,Nama Lengkap,Email,Kota\n1,Budi Santoso,budi@example.com,Jakarta\n2,Siti Rahma,siti@example.com,Bandung';
+    const csvFile = new File([csvContent], 'users.csv', {
+      type: 'text/csv',
+    });
+
+    const pdfBlob = await DocumentConverter.csvToPdf(csvFile);
+    expect(pdfBlob.type).toBe('application/pdf');
+    expect(pdfBlob.size).toBeGreaterThan(1000);
+
+    const pdfDoc = await PDFDocument.load(await pdfBlob.arrayBuffer());
+    expect(pdfDoc.getPageCount()).toBeGreaterThanOrEqual(1);
+    expect(pdfDoc.getTitle()).toBe('users');
+  });
 });
 

@@ -30,6 +30,24 @@ export const csvToJsonEngine = {
   },
 };
 
+export const csvToPdfEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.csvToPdf(file);
+  },
+};
+
+export const csvToDocxEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.csvToDocx(file);
+  },
+};
+
+export const csvToXlsxEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.csvToXlsx(file);
+  },
+};
+
 export const jsonToCsvEngine = {
   runConversion: async (file: File): Promise<Blob> => {
     return DocumentConverter.jsonToCsv(file);

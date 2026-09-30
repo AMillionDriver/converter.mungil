@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DownloadManager } from '../../lib/download-manager';
 
 interface CsvViewerProps {
   file: File;
@@ -11,6 +12,28 @@ export function CsvViewer({ file }: CsvViewerProps) {
   const [rowLimit, setRowLimit] = useState<number>(100);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isZipping, setIsZipping] = useState<boolean>(false);
+
+  const handleDownloadCsv = () => {
+    DownloadManager.download(file, {
+      filename: file.name,
+      mimeType: 'text/csv',
+    });
+  };
+
+  const handleDownloadZip = async () => {
+    try {
+      setIsZipping(true);
+      await DownloadManager.downloadZip(
+        [file],
+        file.name.replace(/\.[^/.]+$/, '.zip')
+      );
+    } catch {
+      // Ignored or handle toast if needed
+    } finally {
+      setIsZipping(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -188,6 +211,76 @@ export function CsvViewer({ file }: CsvViewerProps) {
               <option value={500}>500 baris</option>
             </select>
           </div>
+        </div>
+
+        {/* Actions: Download CSV / ZIP */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadCsv}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition active:scale-95 shadow-2xs"
+            title="Unduh berkas CSV ini"
+          >
+            <svg
+              className="size-3.5 text-slate-500"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+            <span>Unduh CSV</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isZipping}
+            onClick={handleDownloadZip}
+            className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition active:scale-95 shadow-2xs disabled:opacity-50"
+            title="Kompres dan unduh sebagai arsip .ZIP"
+          >
+            {isZipping ? (
+              <svg
+                className="size-3.5 animate-spin text-indigo-600"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="size-3.5 text-indigo-600"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
+                />
+              </svg>
+            )}
+            <span>{isZipping ? 'Mengompres...' : 'Unduh .ZIP'}</span>
+          </button>
         </div>
       </div>
 

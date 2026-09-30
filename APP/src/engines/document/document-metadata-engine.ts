@@ -20,6 +20,8 @@ export interface DocumentMetadataResult {
   created: Date;
   modified: Date;
   pageCount?: number;
+  rowCount?: number;
+  colCount?: number;
   metadata: DocumentMetadata;
 }
 
@@ -32,6 +34,8 @@ export class DocumentMetadataEngine {
     const buffer = await file.arrayBuffer();
     const resultMeta: DocumentMetadata = {};
     let pageCount: number | undefined;
+    let rowCount: number | undefined;
+    let colCount: number | undefined;
 
     if (ext === 'pdf') {
       try {
@@ -78,8 +82,26 @@ export class DocumentMetadataEngine {
           err
         );
       }
+    } else if (ext === 'csv') {
+      try {
+        const text = fflate.strFromU8(new Uint8Array(buffer));
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        if (lines.length > 0) {
+          rowCount = Math.max(0, lines.length - 1);
+          colCount = lines[0].split(',').length;
+        }
+      } catch (err) {
+        console.warn(
+          '[DocumentMetadataEngine] Gagal membaca baris CSV:',
+          err
+        );
+      }
+      resultMeta.title = file.name.replace(/\.[^/.]+$/, '');
+      resultMeta.author = '';
+      resultMeta.producer = 'Mungil Converter';
+      resultMeta.creationDate = new Date(file.lastModified || Date.now());
     } else {
-      // Basic text / csv / json metadata fallback
+      // Basic text / json metadata fallback
       resultMeta.title = file.name.replace(/\.[^/.]+$/, '');
       resultMeta.author = '';
       resultMeta.producer = 'Mungil Converter';
@@ -92,6 +114,8 @@ export class DocumentMetadataEngine {
       created: new Date(file.lastModified || Date.now()),
       modified: new Date(file.lastModified || Date.now()),
       pageCount,
+      rowCount,
+      colCount,
       metadata: resultMeta,
     };
   }

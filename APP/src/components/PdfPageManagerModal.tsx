@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 import { PdfPageEngine } from '../engines/document/pdf-page-engine';
+import { DownloadManager } from '../lib/download-manager';
 
 if (typeof globalThis !== 'undefined') {
   (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker = pdfjsWorker;
@@ -9,16 +10,23 @@ if (typeof globalThis !== 'undefined') {
 
 interface PageItem {
   id: string;
-  originalIndex: number; // 0-indexed position in source PDF
+  originalIndex: number; // 0-indexed position in source PDF, or -1 for blank page
   rotation: number; // 0, 90, 180, 270
   selected: boolean;
+  isBlank?: boolean;
+}
+
+export interface PdfPageApplyMeta {
+  isExtracted: boolean;
+  pageCount: number;
+  extractedIndices?: number[];
 }
 
 interface PdfPageManagerModalProps {
   file: File | null;
   isOpen: boolean;
   onClose: () => void;
-  onApply: (updatedFile: File) => void;
+  onApply: (updatedFile: File, meta?: PdfPageApplyMeta) => void;
 }
 
 export function PdfPageManagerModal({
@@ -35,8 +43,11 @@ export function PdfPageManagerModal({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [zoomPageIndex, setZoomPageIndex] = useState<number | null>(null);
+  const [zoomLoading, setZoomLoading] = useState<boolean>(false);
 
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+  const zoomCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Initialize and Render Thumbnails
   useEffect(() => {
@@ -106,16 +117,113 @@ export function PdfPageManagerModal({
       }
     })();
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+    return () => {
+      active = false;
     };
+  }, [file, isOpen]);
+
+  // Global Keyboard Navigation for Lightbox & Modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (zoomPageIndex !== null) {
+        if (e.key === 'Escape') {
+          setZoomPageIndex(null);
+        } else if (e.key === 'ArrowLeft') {
+          setZoomPageIndex((prev) =>
+            prev !== null && prev > 0 ? prev - 1 : prev
+          );
+        } else if (e.key === 'ArrowRight') {
+          setZoomPageIndex((prev) =>
+            prev !== null && prev < pages.length - 1 ? prev + 1 : prev
+          );
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, zoomPageIndex, pages.length, onClose]);
+
+  // Render High-Res Page in Lightbox
+  useEffect(() => {
+    if (zoomPageIndex === null || !pdfDocRef.current) return;
+    const pageItem = pages[zoomPageIndex];
+    if (!pageItem || pageItem.isBlank) return;
+
+    let active = true;
+    setZoomLoading(true);
+
+    (async () => {
+      try {
+        const page = await pdfDocRef.current!.getPage(
+          pageItem.originalIndex + 1
+        );
+        if (!active) return;
+
+        const scale = 1.75;
+        const viewport = page.getViewport({
+          scale,
+          rotation: pageItem.rotation,
+        });
+
+        const canvas = zoomCanvasRef.current;
+        if (!canvas) return;
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          await page.render({
+            canvasContext: ctx,
+            canvas,
+            viewport,
+          }).promise;
+        }
+      } catch (err) {
+        console.warn('[PdfPageManager] Gagal me-render zoom halaman:', err);
+      } finally {
+        if (active) setZoomLoading(false);
+      }
+    })();
 
     return () => {
       active = false;
-      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [file, isOpen, onClose]);
+  }, [zoomPageIndex, pages]);
+
+  // Insert Blank Page Action
+  const handleInsertBlankPage = (atIndex?: number) => {
+    const newBlank: PageItem = {
+      id: `blank-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      originalIndex: -1,
+      rotation: 0,
+      selected: false,
+      isBlank: true,
+    };
+    setPages((prev) => {
+      const next = [...prev];
+      if (
+        typeof atIndex === 'number' &&
+        atIndex >= 0 &&
+        atIndex <= next.length
+      ) {
+        next.splice(atIndex, 0, newBlank);
+      } else {
+        next.push(newBlank);
+      }
+      return next;
+    });
+  };
 
   // Page Actions
   const handleRotatePage = (index: number, degreesToAdd: number) => {
@@ -136,6 +244,13 @@ export function PdfPageManagerModal({
       return;
     }
     setPages((prev) => prev.filter((_, i) => i !== index));
+    if (zoomPageIndex !== null) {
+      if (pages.length - 1 <= 0) {
+        setZoomPageIndex(null);
+      } else if (zoomPageIndex >= pages.length - 1) {
+        setZoomPageIndex(pages.length - 2);
+      }
+    }
   };
 
   const handleMoveLeft = (index: number) => {
@@ -264,20 +379,34 @@ export function PdfPageManagerModal({
         const operations = targetPages.map((p) => ({
           originalIndex: p.originalIndex,
           rotation: p.rotation,
+          isBlank: p.isBlank,
         }));
 
         const resultBlob = await PdfPageEngine.processPages(file, operations);
 
         const newFileName = extractSelectedOnly
-          ? file.name.replace(/\.[^/.]+$/, '_extracted.pdf')
-          : file.name;
+          ? file.name.replace(
+              /\.[^/.]+$/,
+              `_ekstrak_${targetPages.length}hal.pdf`
+            )
+          : file.name.replace(/\.[^/.]+$/, '_diedit.pdf');
 
         const updatedFile = new File([resultBlob], newFileName, {
           type: 'application/pdf',
           lastModified: Date.now(),
         });
 
-        onApply(updatedFile);
+        const meta: PdfPageApplyMeta = {
+          isExtracted: extractSelectedOnly,
+          pageCount: targetPages.length,
+          extractedIndices: extractSelectedOnly
+            ? targetPages
+                .map((p) => p.originalIndex + 1)
+                .filter((num) => num > 0)
+            : undefined,
+        };
+
+        onApply(updatedFile, meta);
         onClose();
       } catch (err) {
         alert(
@@ -310,6 +439,7 @@ export function PdfPageManagerModal({
       const operations = targetPages.map((p) => ({
         originalIndex: p.originalIndex,
         rotation: p.rotation,
+        isBlank: p.isBlank,
       }));
 
       const resultBlob = await PdfPageEngine.processPages(file, operations);
@@ -327,6 +457,72 @@ export function PdfPageManagerModal({
       alert(err instanceof Error ? err.message : 'Gagal mengunduh berkas PDF.');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Download Pages as ZIP
+  const handleDownloadZip = async (extractSelectedOnly = false) => {
+    if (!file) return;
+
+    const targetPages = extractSelectedOnly
+      ? pages.filter((p) => p.selected)
+      : pages;
+
+    if (targetPages.length === 0) {
+      alert('Pilih minimal 1 halaman untuk diunduh.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setStatusMessage(
+      `Memecah ${targetPages.length} halaman menjadi file PDF terpisah...`
+    );
+
+    try {
+      const baseName = file.name.replace(/\.[^/.]+$/, '');
+      const zipEntries: Array<{ name: string; blob: Blob }> = [];
+
+      for (let i = 0; i < targetPages.length; i++) {
+        const p = targetPages[i];
+        setStatusMessage(
+          `Memproses halaman ${i + 1} dari ${targetPages.length}...`
+        );
+
+        const singlePageBlob = await PdfPageEngine.processPages(file, [
+          {
+            originalIndex: p.originalIndex,
+            rotation: p.rotation,
+            isBlank: p.isBlank,
+          },
+        ]);
+
+        const pageNum = String(i + 1).padStart(
+          String(targetPages.length).length > 2 ? 3 : 2,
+          '0'
+        );
+        const entryName = `${baseName}_hal_${pageNum}.pdf`;
+
+        zipEntries.push({
+          name: entryName,
+          blob: singlePageBlob,
+        });
+      }
+
+      setStatusMessage('Mengemas ke dalam arsip ZIP...');
+      const zipFilename = extractSelectedOnly
+        ? `${baseName}_halaman_terpilih_${Date.now()}.zip`
+        : `${baseName}_semua_halaman_${Date.now()}.zip`;
+
+      await DownloadManager.downloadZip(zipEntries, zipFilename);
+    } catch (err) {
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'Gagal mengunduh halaman PDF sebagai ZIP.'
+      );
+    } finally {
+      setIsProcessing(false);
+      setStatusMessage(null);
     }
   };
 
@@ -495,6 +691,28 @@ export function PdfPageManagerModal({
 
             <button
               type="button"
+              onClick={() => handleInsertBlankPage()}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-slate-700 hover:bg-slate-50 transition active:scale-95 shadow-xs"
+              title="Sisipkan satu lembar kosong baru ke akhir dokumen"
+            >
+              <svg
+                className="size-3.5 text-indigo-600"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 4.5v15m7.5-7.5h-15"
+                />
+              </svg>
+              <span>+ Sisipkan Lembar Kosong</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleReset}
               className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition"
               title="Kembalikan urutan dan rotasi ke awal"
@@ -573,16 +791,41 @@ export function PdfPageManagerModal({
                             {p.rotation}°
                           </span>
                         )}
-                        <span>(Hal. {p.originalIndex + 1})</span>
+                        <span>
+                          {p.isBlank ? '(Kosong)' : `(Hal. ${p.originalIndex + 1})`}
+                        </span>
                       </div>
                     </div>
 
                     {/* Canvas Thumbnail Area */}
                     <div
-                      onClick={() => handleToggleSelect(index)}
-                      className="relative flex h-48 w-full items-center justify-center p-3 overflow-hidden cursor-pointer bg-slate-50"
+                      onDoubleClick={() => setZoomPageIndex(index)}
+                      className="group/thumb relative flex h-48 w-full items-center justify-center p-3 overflow-hidden cursor-pointer bg-slate-50"
+                      title="Klik ganda atau klik tombol Perbesar untuk melihat halaman penuh"
                     >
-                      {thumbUrl ? (
+                      {p.isBlank ? (
+                        <div className="flex flex-col items-center justify-center text-slate-400 p-4 border border-dashed border-slate-300 rounded-lg bg-white size-full">
+                          <svg
+                            className="size-8 text-slate-300 mb-1"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                            />
+                          </svg>
+                          <span className="text-[11px] font-semibold text-slate-600">
+                            Lembar Kosong
+                          </span>
+                          <span className="text-[9px] text-slate-400 mt-0.5">
+                            Blank Page
+                          </span>
+                        </div>
+                      ) : thumbUrl ? (
                         <img
                           src={thumbUrl}
                           alt={`Halaman ${index + 1}`}
@@ -609,6 +852,33 @@ export function PdfPageManagerModal({
                           <span className="text-[10px]">Memuat...</span>
                         </div>
                       )}
+
+                      {/* Hover Overlay with Perbesar Button */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-slate-900/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setZoomPageIndex(index);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold text-slate-800 shadow-md backdrop-blur-xs hover:bg-white transition active:scale-95"
+                        >
+                          <svg
+                            className="size-3.5 text-indigo-600"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6"
+                            />
+                          </svg>
+                          <span>Perbesar</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Bottom Action Controls */}
@@ -703,27 +973,49 @@ export function PdfPageManagerModal({
                         </button>
                       </div>
 
-                      {/* Delete */}
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePage(index)}
-                        title="Hapus halaman ini"
-                        className="inline-flex size-6 items-center justify-center rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                      >
-                        <svg
-                          className="size-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          viewBox="0 0 24 24"
+                      {/* Insert Blank & Delete */}
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleInsertBlankPage(index + 1)}
+                          title="Sisipkan lembar kosong setelah halaman ini"
+                          className="inline-flex size-6 items-center justify-center rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-                          />
-                        </svg>
-                      </button>
+                          <svg
+                            className="size-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M12 4.5v15m7.5-7.5h-15"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePage(index)}
+                          title="Hapus halaman ini"
+                          className="inline-flex size-6 items-center justify-center rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                        >
+                          <svg
+                            className="size-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -754,19 +1046,56 @@ export function PdfPageManagerModal({
                 disabled={isProcessing}
                 onClick={() => handleApplyChanges(true)}
                 className="rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition active:scale-95 shadow-xs"
-                title="Hanya simpan halaman yang dicentang"
+                title="Gunakan hanya halaman terpilih ini di antrean konverter"
               >
-                Ekstrak {selectedCount} Halaman Saja
+                Gunakan {selectedCount} Halaman Saja (Ekstrak ke Konverter)
               </button>
             )}
+
+            {/* Download Pages as ZIP button */}
+            <button
+              type="button"
+              disabled={isProcessing || pages.length === 0}
+              onClick={() =>
+                handleDownloadZip(
+                  selectedCount > 0 && selectedCount < pages.length
+                )
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition active:scale-95 shadow-xs"
+              title={
+                selectedCount > 0 && selectedCount < pages.length
+                  ? `Pecah dan unduh ${selectedCount} halaman terpilih sebagai file PDF terpisah dalam format ZIP`
+                  : 'Pecah dan unduh semua halaman sebagai file PDF terpisah dalam format ZIP'
+              }
+            >
+              <svg
+                className="size-3.5 text-indigo-600 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
+                />
+              </svg>
+              <span>
+                {selectedCount > 0 && selectedCount < pages.length
+                  ? `Unduh (${selectedCount}) Halaman .ZIP`
+                  : 'Unduh Halaman (.ZIP)'}
+              </span>
+            </button>
 
             <button
               type="button"
               disabled={isProcessing}
               onClick={() => handleDownload(false)}
               className="rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition active:scale-95 shadow-xs"
+              title="Unduh dokumen lengkap sebagai satu file PDF"
             >
-              Unduh Langsung
+              Unduh Langsung (PDF)
             </button>
 
             <button
@@ -780,6 +1109,213 @@ export function PdfPageManagerModal({
           </div>
         </footer>
       </div>
+
+      {/* Lightbox / Full-page Zoom Modal */}
+      {zoomPageIndex !== null && pages[zoomPageIndex] && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-60 flex flex-col items-center justify-between p-3 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setZoomPageIndex(null)}
+        >
+          {/* Top Bar */}
+          <div
+            className="w-full max-w-4xl flex items-center justify-between text-white shrink-0 py-2 px-3 sm:px-4 rounded-xl bg-slate-900/85 border border-slate-800 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-xs sm:text-sm font-semibold text-slate-200">
+                Halaman {zoomPageIndex + 1} dari {pages.length}
+                {pages[zoomPageIndex].isBlank && (
+                  <span className="ml-2 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Lembar Kosong
+                  </span>
+                )}
+              </span>
+              <span className="text-xs text-slate-400">
+                ({pages[zoomPageIndex].rotation}°)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {/* Rotate Left */}
+              <button
+                type="button"
+                onClick={() => handleRotatePage(zoomPageIndex, -90)}
+                title="Putar -90° (Kiri)"
+                className="inline-flex size-8 items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition"
+              >
+                <svg
+                  className="size-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m9 15-6-6m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"
+                  />
+                </svg>
+              </button>
+
+              {/* Rotate Right */}
+              <button
+                type="button"
+                onClick={() => handleRotatePage(zoomPageIndex, 90)}
+                title="Putar +90° (Kanan)"
+                className="inline-flex size-8 items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition"
+              >
+                <svg
+                  className="size-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"
+                  />
+                </svg>
+              </button>
+
+              <div className="h-4 w-px bg-slate-700 mx-1" />
+
+              {/* Close Lightbox */}
+              <button
+                type="button"
+                onClick={() => setZoomPageIndex(null)}
+                title="Tutup Pratinjau (ESC)"
+                className="inline-flex size-8 items-center justify-center rounded-lg text-slate-300 hover:text-white hover:bg-rose-500/20 hover:text-rose-300 transition"
+              >
+                <svg
+                  className="size-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18 18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Center Stage with Prev / Canvas / Next */}
+          <div
+            className="relative flex-1 w-full max-w-5xl flex items-center justify-between gap-2 sm:gap-4 my-auto overflow-hidden py-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Prev Page Button */}
+            <button
+              type="button"
+              disabled={zoomPageIndex === 0}
+              onClick={() =>
+                setZoomPageIndex((prev) =>
+                  prev !== null && prev > 0 ? prev - 1 : prev
+                )
+              }
+              title="Halaman Sebelumnya (←)"
+              className="shrink-0 size-10 sm:size-12 rounded-full bg-slate-900/80 hover:bg-indigo-600 disabled:opacity-25 disabled:hover:bg-slate-900/80 text-white flex items-center justify-center transition border border-slate-700 shadow-xl"
+            >
+              <svg
+                className="size-5 sm:size-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.75 19.5 8.25 12l7.5-7.5"
+                />
+              </svg>
+            </button>
+
+            {/* Document Content */}
+            <div className="relative flex items-center justify-center flex-1 max-h-[78vh] overflow-auto">
+              {pages[zoomPageIndex].isBlank ? (
+                <div className="flex flex-col items-center justify-center w-[380px] h-[520px] max-w-[85vw] max-h-[75vh] bg-white rounded-lg shadow-2xl border-2 border-dashed border-slate-300 p-8 text-center select-none animate-in zoom-in-95 duration-150">
+                  <div className="size-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-4 border border-slate-200">
+                    <svg
+                      className="size-8"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                      />
+                    </svg>
+                  </div>
+                  <p className="text-base font-bold text-slate-800">
+                    Lembar Halaman Kosong
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1.5 max-w-xs">
+                    Halaman ini disisipkan sebagai lembar kosong putih dan akan disertakan saat diekspor.
+                  </p>
+                </div>
+              ) : (
+                <div className="relative flex items-center justify-center max-w-full max-h-full">
+                  {zoomLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs rounded-lg z-10">
+                      <div className="size-8 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                  <canvas
+                    ref={zoomCanvasRef}
+                    className="max-w-[85vw] max-h-[75vh] object-contain rounded-lg shadow-2xl bg-white transition-opacity duration-200"
+                    style={{ opacity: zoomLoading ? 0.4 : 1 }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Next Page Button */}
+            <button
+              type="button"
+              disabled={zoomPageIndex === pages.length - 1}
+              onClick={() =>
+                setZoomPageIndex((prev) =>
+                  prev !== null && prev < pages.length - 1 ? prev + 1 : prev
+                )
+              }
+              title="Halaman Berikutnya (→)"
+              className="shrink-0 size-10 sm:size-12 rounded-full bg-slate-900/80 hover:bg-indigo-600 disabled:opacity-25 disabled:hover:bg-slate-900/80 text-white flex items-center justify-center transition border border-slate-700 shadow-xl"
+            >
+              <svg
+                className="size-5 sm:size-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                />
+              </svg>
+            </button>
+          </div>
+
+          {/* Bottom Bar Hints */}
+          <div className="text-center text-xs text-slate-400 shrink-0 py-1">
+            Gunakan tombol panah keyboard <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">←</kbd> dan <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">→</kbd> untuk berpindah halaman • Tekan <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">ESC</kbd> untuk keluar
+          </div>
+        </div>
+      )}
     </div>
   );
 }

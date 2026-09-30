@@ -61,7 +61,7 @@ Dokumen ini mendefinisikan matriks konversi file yang didukung oleh sistem, bata
 | `.pdf` | `.docx` (Experimental), `.txt` |
 | `.docx` | `.pdf`, `.txt` |
 | `.txt` | `.pdf`, `.docx` |
-| `.csv` | `.json`, `.xlsx` |
+| `.csv` | `.json`, `.pdf`, `.docx`, `.xlsx` |
 | `.json` | `.csv` |
 
 ---
