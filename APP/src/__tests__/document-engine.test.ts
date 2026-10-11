@@ -81,6 +81,39 @@ describe('DocumentMetadataEngine', () => {
     expect(reRead.metadata.title).toBeUndefined();
     expect(reRead.metadata.author).toBeUndefined();
   });
+
+  it('should write and re-read metadata on DOCX files', async () => {
+    // 1. Generate base DOCX
+    const baseTxt = new File(['Halo Dunia!'], 'surat.txt', {
+      type: 'text/plain',
+    });
+    const docxBlob = await DocumentConverter.txtToDocx(baseTxt);
+    const docxFile = new File([docxBlob], 'surat.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+
+    // 2. Write metadata
+    const updatedBlob = await DocumentMetadataEngine.writeMetadata(
+      docxFile,
+      {
+        title: 'Surat Resmi 2026',
+        author: 'Nanang Nurmansah',
+        subject: 'Pemberitahuan',
+        keywords: 'surat, resmi, penting',
+      },
+      'docx'
+    );
+
+    // 3. Re-read and verify roundtrip modification
+    const updatedFile = new File([updatedBlob], 'surat-updated.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    const reRead = await DocumentMetadataEngine.read(updatedFile);
+    expect(reRead.metadata.title).toBe('Surat Resmi 2026');
+    expect(reRead.metadata.author).toBe('Nanang Nurmansah');
+    expect(reRead.metadata.subject).toBe('Pemberitahuan');
+    expect(reRead.metadata.keywords).toBe('surat, resmi, penting');
+  });
 });
 
 describe('DocumentConverter', () => {

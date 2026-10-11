@@ -124,6 +124,7 @@ interface DropzoneProps {
     diffs: MetadataDiffItem[],
     execute: () => Promise<void>
   ) => void;
+  onOpenMetadata?: () => void;
 }
 
 function Dropzone({
@@ -140,6 +141,7 @@ function Dropzone({
   compressionQuality,
   setCompressionQuality,
   onInterceptDiff,
+  onOpenMetadata,
 }: DropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -1129,6 +1131,99 @@ function Dropzone({
                   </>
                 )}
 
+                {/* EXIF Metadata Badge for Images */}
+                {activeMetadata &&
+                  Boolean(
+                    activeMetadata.exif.Make ||
+                      activeMetadata.exif.Model ||
+                      activeMetadata.exif.Artist ||
+                      activeMetadata.exif.DateTimeOriginal ||
+                      activeMetadata.exif.GPSLatitude !== undefined ||
+                      editedExif.Make ||
+                      editedExif.Model
+                  ) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={onOpenMetadata}
+                        className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200/80 shadow-2xs hover:bg-indigo-100 transition active:scale-95 cursor-pointer max-w-[200px] truncate"
+                        title="Klik untuk melihat & mengedit metadata EXIF"
+                      >
+                        <svg
+                          className="size-3 text-indigo-600 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z"
+                          />
+                        </svg>
+                        <span className="truncate">
+                          EXIF:{' '}
+                          {[
+                            editedExif.Make || activeMetadata.exif.Make,
+                            editedExif.Model || activeMetadata.exif.Model,
+                          ]
+                            .filter(Boolean)
+                            .join(' ') ||
+                            (activeMetadata.exif.Artist
+                              ? `${activeMetadata.exif.Artist}`
+                              : 'Terdeteksi')}
+                        </span>
+                      </button>
+                      <span className="text-slate-300">•</span>
+                    </>
+                  )}
+
+                {/* Document Metadata Badge */}
+                {activeDocMetadata?.metadata &&
+                  Boolean(
+                    activeDocMetadata.metadata.title ||
+                      activeDocMetadata.metadata.author ||
+                      editedDocMetadata?.title ||
+                      editedDocMetadata?.author
+                  ) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={onOpenMetadata}
+                        className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200/80 shadow-2xs hover:bg-indigo-100 transition active:scale-95 cursor-pointer max-w-[200px] truncate"
+                        title="Klik untuk melihat & mengedit metadata dokumen"
+                      >
+                        <svg
+                          className="size-3 text-indigo-600 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                          />
+                        </svg>
+                        <span className="truncate">
+                          Meta:{' '}
+                          {editedDocMetadata?.title ||
+                            activeDocMetadata.metadata.title ||
+                            editedDocMetadata?.author ||
+                            activeDocMetadata.metadata.author}
+                        </span>
+                      </button>
+                      <span className="text-slate-300">•</span>
+                    </>
+                  )}
+
                 <span className="text-xs text-slate-500 font-medium">
                   {(uploadedFiles[0].size / 1024 / 1024).toFixed(2)} MB
                 </span>
@@ -1848,6 +1943,14 @@ function App() {
     setPendingConvertAction(null);
   };
 
+  const handleOpenMetadata = () => {
+    setIsMobileMetadataOpen(true);
+    const el = document.getElementById('metadata-sidebar');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen((currentState) => !currentState);
   };
@@ -1986,6 +2089,7 @@ function App() {
           <div className="grid gap-8 lg:grid-cols-[280px_1fr_280px]">
             {/* Kolom Kiri - Ad Banner / Metadata Side Menu */}
             <aside
+              id="metadata-sidebar"
               aria-label={
                 activeMetadata || activeDocMetadata
                   ? 'Metadata Inspector'
@@ -2122,6 +2226,7 @@ function App() {
                   compressionQuality={compressionQuality}
                   setCompressionQuality={setCompressionQuality}
                   onInterceptDiff={handleInterceptDiff}
+                  onOpenMetadata={handleOpenMetadata}
                 />
               </div>
 

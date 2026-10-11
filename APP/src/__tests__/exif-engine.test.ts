@@ -127,4 +127,82 @@ describe('ExifEngine - Metadata Diff & Modification Tracking', () => {
     expect(parsed.exif.Make).toBe('Apple');
     expect(parsed.exif.Model).toBe('iPhone 15 Pro Max');
   });
+
+  it('should physically overwrite existing EXIF and verify roundtrip modification', async () => {
+    // 1. Start with an image that has initial EXIF (Nikon D850)
+    const minimalJpegBase64 =
+      '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+    const binaryStr = atob(minimalJpegBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const baseBlob = new Blob([bytes], { type: 'image/jpeg' });
+
+    const initialExif: ExifData = {
+      Make: 'NIKON CORPORATION',
+      Model: 'NIKON D850',
+      Artist: 'Fotografer Lama',
+    };
+    const initialBlob = await ExifEngine.writeExif(baseBlob, initialExif);
+    const initialFile = new File([initialBlob], 'nikon.jpg', {
+      type: 'image/jpeg',
+    });
+    const parsedInitial = await ExifEngine.read(initialFile);
+    expect(parsedInitial.exif.Make).toBe('NIKON CORPORATION');
+    expect(parsedInitial.exif.Model).toBe('NIKON D850');
+    expect(parsedInitial.exif.Artist).toBe('Fotografer Lama');
+
+    // 2. Modify EXIF to FUJIFILM X-T5 with new Artist
+    const modifiedExif: ExifData = {
+      ...parsedInitial.exif,
+      Make: 'FUJIFILM',
+      Model: 'X-T5',
+      Artist: 'Fotografer Baru',
+    };
+    const modifiedBlob = await ExifEngine.writeExif(initialBlob, modifiedExif);
+    const modifiedFile = new File([modifiedBlob], 'fujifilm.jpg', {
+      type: 'image/jpeg',
+    });
+    const parsedModified = await ExifEngine.read(modifiedFile);
+
+    // 3. Assert binary output changed and re-read reveals exact updated values
+    expect(parsedModified.exif.Make).toBe('FUJIFILM');
+    expect(parsedModified.exif.Model).toBe('X-T5');
+    expect(parsedModified.exif.Artist).toBe('Fotografer Baru');
+  });
+
+  it('should remove EXIF metadata when user strips all fields', async () => {
+    const minimalJpegBase64 =
+      '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+    const binaryStr = atob(minimalJpegBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const baseBlob = new Blob([bytes], { type: 'image/jpeg' });
+
+    // Inject some tags first
+    const withExifBlob = await ExifEngine.writeExif(baseBlob, {
+      Make: 'Canon',
+      Model: 'EOS R5',
+    });
+
+    // Strip everything
+    const strippedBlob = await ExifEngine.writeExif(withExifBlob, {
+      Make: '',
+      Model: '',
+      Artist: '',
+      Copyright: '',
+      Software: '',
+    });
+
+    const testFile = new File([strippedBlob], 'stripped.jpg', {
+      type: 'image/jpeg',
+    });
+    const parsed = await ExifEngine.read(testFile);
+    expect(parsed.exif.Make).toBeUndefined();
+    expect(parsed.exif.Model).toBeUndefined();
+  });
 });
+
