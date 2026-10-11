@@ -1,9 +1,24 @@
-# robots.txt for Mungil Converter
+# robots.txt for Mungil Converter (converter.mungil.my.id)
 User-agent: *
 Allow: /
-
-# Disallow API or backend fallback crawlers if any
 Disallow: /api/
 
-# Sitemap location
-Sitemap: https://mungil.my.id/sitemap.xml
+# Mengizinkan AI Search Engines mengindeks dan mengutip Mungil Converter
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+# Batasi bot agresif tak bertuan
+User-agent: AhrefsBot
+Crawl-delay: 10
+
+User-agent: SemrushBot
+Crawl-delay: 10
+
+# Lokasi XML Sitemap Resmi
+Sitemap: https://converter.mungil.my.id/sitemap.xml

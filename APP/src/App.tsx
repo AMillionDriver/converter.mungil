@@ -1998,7 +1998,7 @@ function App() {
               type="button"
               title="Lihat status kapasitas lokal"
             >
-              <span className="max-w-36 truncate">mungil.my.id</span>
+              <span className="max-w-44 truncate">converter.mungil.my.id</span>
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
                 {t('nav.freePlan')}
               </span>
@@ -2056,7 +2056,7 @@ function App() {
                 className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5 cursor-pointer hover:bg-slate-100 transition"
               >
                 <span className="text-sm font-medium text-slate-600">
-                  mungil.my.id
+                  converter.mungil.my.id
                 </span>
                 <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
                   {t('nav.freePlan')}
