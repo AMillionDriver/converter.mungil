@@ -169,7 +169,7 @@ export function SupportModal({ isOpen, onClose }: SupportModalProps) {
 
           {/* Diagnostic & Contact Section */}
           <section className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
               <div>
                 <h4 className="text-xs font-bold text-slate-900">
                   Mengalami Kendala Teknis atau Bug?

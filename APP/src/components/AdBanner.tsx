@@ -39,8 +39,6 @@ export function AdBanner({
     clientId.includes('0000000000000000');
 
   useEffect(() => {
-    // Only load external Google AdSense script when a real publisher ID is supplied
-    // to prevent Google Ad servers from returning HTTP 400 Bad Request on placeholder IDs.
     if (isDummyClient || isTest) {
       return;
     }
@@ -60,7 +58,6 @@ export function AdBanner({
       };
 
       script.onerror = () => {
-        // Typically triggered by browser AdBlockers (uBlock, Brave, etc.)
         setAdBlocked(true);
       };
 
@@ -80,6 +77,9 @@ export function AdBanner({
     }
   }, [adLoaded, adBlocked, isDummyClient, isTest]);
 
+  const isHorizontal = format === 'horizontal';
+  const isRectangle = format === 'rectangle';
+
   return (
     <div
       ref={adRef}
@@ -92,7 +92,6 @@ export function AdBanner({
           <span className="rounded bg-slate-100 px-1 py-0.2 font-semibold text-slate-500">
             Ad
           </span>
-          {/* AdChoices SVG Icon */}
           <svg
             className="size-3 text-slate-400 transition hover:text-indigo-600"
             viewBox="0 0 16 16"
@@ -107,16 +106,24 @@ export function AdBanner({
       {/* Ad Content Container */}
       <div
         className={`flex ${
-          format === 'rectangle' ? 'min-h-[240px]' : 'min-h-[320px]'
-        } flex-col items-center justify-between rounded-xl bg-slate-50/70 p-3 text-center border border-dashed border-slate-200/80`}
+          isHorizontal
+            ? 'min-h-[120px] flex-col sm:flex-row items-center justify-between gap-3 p-3.5'
+            : isRectangle
+              ? 'min-h-[250px] flex-col items-center justify-between p-3'
+              : 'min-h-[320px] flex-col items-center justify-between p-3'
+        } rounded-xl bg-slate-50/70 text-center border border-dashed border-slate-200/80`}
       >
-        {/* Real AdSense tag (only active when real publisher ID is present in production) */}
+        {/* Real AdSense tag */}
         {!isDummyClient && !isTest && (
           <ins
             className="adsbygoogle w-full"
             style={{
               display: 'block',
-              minHeight: format === 'rectangle' ? '180px' : '250px',
+              minHeight: isHorizontal
+                ? '90px'
+                : isRectangle
+                  ? '180px'
+                  : '250px',
             }}
             data-ad-client={clientId}
             data-ad-slot={slotId}
@@ -126,60 +133,103 @@ export function AdBanner({
         )}
 
         {/* Realistic Google Test Ad Card (Fallback & Simulator) */}
-        <div className="w-full flex flex-col items-center justify-between gap-3 py-2">
-          {/* Sponsor Tag & Test Mode Badge */}
-          <div className="flex w-full items-center justify-between px-1">
-            <span className="text-[10px] font-semibold text-slate-400">
-              Google Ads Partner
-            </span>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-600 border border-emerald-200/70">
-              TEST API ACTIVE
-            </span>
-          </div>
+        {isHorizontal ? (
+          /* Horizontal Banner Layout */
+          <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-4 text-left">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 shadow-2xs border border-indigo-100">
+                <svg
+                  className="size-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418"
+                  />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <h4 className="text-xs font-bold text-slate-800 truncate">
+                    Cloudflare & Google Cloud
+                  </h4>
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.2 text-[9px] font-bold text-emerald-600 border border-emerald-200/70 shrink-0">
+                    TEST AD
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 line-clamp-1">
+                  Infrastruktur cloud ultra-cepat untuk deployment web modern dengan proteksi DDoS bawaan.
+                </p>
+              </div>
+            </div>
 
-          {/* Ad Visual Graphic */}
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-xs border border-indigo-100">
-            <svg
-              className="size-7"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              viewBox="0 0 24 24"
+            <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto">
+              <a
+                href="https://cloud.google.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto rounded-lg bg-indigo-600 px-4 py-2 text-center text-xs font-semibold text-white shadow-xs transition duration-150 hover:bg-indigo-700 active:scale-98"
+              >
+                Pelajari Selengkapnya
+              </a>
+            </div>
+          </div>
+        ) : (
+          /* Vertical / Rectangle Layout */
+          <div className="w-full flex flex-col items-center justify-between gap-3 py-2">
+            <div className="flex w-full items-center justify-between px-1">
+              <span className="text-[10px] font-semibold text-slate-400">
+                Google Ads Partner
+              </span>
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-600 border border-emerald-200/70">
+                TEST API ACTIVE
+              </span>
+            </div>
+
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-xs border border-indigo-100">
+              <svg
+                className="size-7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418"
+                />
+              </svg>
+            </div>
+
+            <div className="space-y-1 px-1">
+              <h4 className="text-xs font-bold text-slate-800 line-clamp-1">
+                Cloudflare & Google Cloud
+              </h4>
+              <p className="text-[11px] leading-relaxed text-slate-500 line-clamp-3">
+                Infrastruktur cloud ultra-cepat untuk deployment web & tools
+                modern dengan proteksi DDoS bawaan.
+              </p>
+            </div>
+
+            <a
+              href="https://cloud.google.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-center text-xs font-semibold text-white shadow-xs transition duration-150 hover:bg-indigo-700 active:scale-98"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418"
-              />
-            </svg>
-          </div>
+              Pelajari Selengkapnya
+            </a>
 
-          {/* Ad Headline & Description */}
-          <div className="space-y-1 px-1">
-            <h4 className="text-xs font-bold text-slate-800 line-clamp-1">
-              Cloudflare & Google Cloud
-            </h4>
-            <p className="text-[11px] leading-relaxed text-slate-500 line-clamp-3">
-              Infrastruktur cloud ultra-cepat untuk deployment web & tools
-              modern dengan proteksi DDoS bawaan.
+            <p className="text-[9px] text-slate-400">
+              Slot ID: {slotId} • Responsive Display
             </p>
           </div>
-
-          {/* CTA Button */}
-          <a
-            href="https://cloud.google.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-center text-xs font-semibold text-white shadow-xs transition duration-150 hover:bg-indigo-700 active:scale-98"
-          >
-            Pelajari Selengkapnya
-          </a>
-
-          {/* Subtext info */}
-          <p className="text-[9px] text-slate-400">
-            Slot ID: {slotId} • Responsive Display
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );

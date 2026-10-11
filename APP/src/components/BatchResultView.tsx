@@ -99,11 +99,11 @@ export function BatchResultView({
         </div>
 
         {/* Action Buttons Top */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={onReset}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition active:scale-95"
+            className="flex-1 sm:flex-none text-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition active:scale-95"
           >
             Konversi File Baru
           </button>
@@ -111,7 +111,7 @@ export function BatchResultView({
             type="button"
             disabled={isZipping}
             onClick={handleDownloadAllZip}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition active:scale-95 disabled:bg-slate-400 disabled:cursor-not-allowed"
+            className="flex-1 sm:flex-none text-center justify-center inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition active:scale-95 disabled:bg-slate-400 disabled:cursor-not-allowed"
           >
             <svg
               className="size-4 shrink-0"

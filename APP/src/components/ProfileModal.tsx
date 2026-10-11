@@ -229,7 +229,7 @@ export function ProfileModal({
 
               {/* Cache Management */}
               <section className="rounded-xl border border-rose-100 bg-rose-50/30 p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h4 className="text-xs font-bold text-slate-900">
                       Bersihkan Cache Engine & Data Lokal

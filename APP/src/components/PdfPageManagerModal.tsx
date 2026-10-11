@@ -1038,7 +1038,7 @@ export function PdfPageManagerModal({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 justify-end w-full sm:w-auto">
             {/* Split / Extract button if pages are selected */}
             {selectedCount > 0 && selectedCount < pages.length && (
               <button

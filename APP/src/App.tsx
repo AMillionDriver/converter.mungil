@@ -799,7 +799,7 @@ function Dropzone({
         <div className="relative z-10 flex flex-col items-center text-center py-2">
           {uploadedFiles.length > 1 ? (
             <div className="w-full max-w-lg mb-6">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-slate-900">
                     Daftar File ({uploadedFiles.length} file)
@@ -837,7 +837,7 @@ function Dropzone({
                   return (
                     <li
                       key={`${f.name}-${i}`}
-                      className="flex items-center justify-between py-2 px-2 hover:bg-white rounded-lg transition"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between py-2 px-2.5 hover:bg-white rounded-lg transition gap-2"
                     >
                       <div className="flex items-center gap-2 min-w-0 pr-2">
                         <span className="rounded bg-slate-200/80 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-700 shrink-0">
@@ -855,7 +855,7 @@ function Dropzone({
                           ({(f.size / 1024 / 1024).toFixed(2)} MB)
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                         <button
                           type="button"
                           onClick={() => setPreviewTarget(f)}
