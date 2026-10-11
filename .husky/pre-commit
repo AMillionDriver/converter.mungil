@@ -1,0 +1,19 @@
+#!/bin/sh
+echo "🔍 Menjalankan pemeriksaan kualitas kode (Husky pre-commit)..."
+
+cd APP || exit 1
+
+echo "1/2 ⚡ Memeriksa ESLint..."
+npm run lint || {
+  echo "❌ Git commit dibatalkan: Terdeteksi kesalahan linting (ESLint error)!"
+  exit 1
+}
+
+echo "2/2 🧪 Memeriksa Unit Tests..."
+npm test || {
+  echo "❌ Git commit dibatalkan: Ada unit test yang gagal!"
+  exit 1
+}
+
+echo "✅ Semua pemeriksaan lulus! Melanjutkan commit..."
+exit 0

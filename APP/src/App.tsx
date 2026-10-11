@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useEngineRegistry } from './hooks/useEngineRegistry';
-import { useEngineLoader } from './hooks/useEngineLoader';
 import { useConversion } from './hooks/useConversion';
 import { engineRegistry } from './lib/engine-registry';
 import { FileValidator } from './lib/file-validator';
@@ -12,6 +11,9 @@ import { MetadataDiffModal } from './components/MetadataDiffModal';
 import { AdBanner } from './components/AdBanner';
 import { FilePreviewModal } from './components/FilePreviewModal';
 import { PdfPageManagerModal } from './components/PdfPageManagerModal';
+import { SupportModal } from './components/SupportModal';
+import { ProfileModal } from './components/ProfileModal';
+import { TurnstileWidget } from './components/TurnstileWidget';
 import {
   BatchResultView,
   type ConvertedBatchItem,
@@ -228,7 +230,6 @@ function Dropzone({
         'text/csv',
         'application/json',
         'application/vnd.ms-excel',
-        'video/mp4',
       ],
       allowedExtensions: [
         'pdf',
@@ -243,7 +244,6 @@ function Dropzone({
         'txt',
         'csv',
         'json',
-        'mp4',
       ],
     };
 
@@ -251,6 +251,13 @@ function Dropzone({
     for (const f of fileList) {
       let currentFile = f;
       const ext = f.name.split('.').pop()?.toLowerCase() || '';
+
+      if (['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext)) {
+        alert(
+          `Format video (.${ext}) sedang dalam tahap optimalisasi WebAssembly dan dinonaktifkan pada versi ini untuk menjaga stabilitas memori browser. Silakan pilih dokumen (PDF, Word, CSV, TXT, JSON) atau gambar (PNG, JPG, WebP, BMP, ICO).`
+        );
+        continue;
+      }
       if (ext === 'bmp') {
         try {
           const headerSlice = await f.slice(0, 2).arrayBuffer();
@@ -1639,8 +1646,11 @@ function App() {
   const [enableCompression, setEnableCompression] = useState(false);
   const [compressionQuality, setCompressionQuality] = useState(75);
 
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileDefaultTab, setProfileDefaultTab] = useState<'specs' | 'limits'>('specs');
+
   useEngineRegistry();
-  useEngineLoader();
 
   useEffect(() => {
     if (uploadedFiles.length === 0) {
@@ -1866,8 +1876,13 @@ function App() {
             </a>
 
             <button
-              className="hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 md:flex"
+              onClick={() => {
+                setProfileDefaultTab('limits');
+                setIsProfileModalOpen(true);
+              }}
+              className="hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 md:flex cursor-pointer"
               type="button"
+              title="Lihat status kapasitas lokal"
             >
               <span className="max-w-36 truncate">mungil.my.id</span>
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
@@ -1877,20 +1892,25 @@ function App() {
             </button>
 
             <div className="hidden items-center gap-1 md:flex">
-              <a
-                className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
-                href="#support"
+              <button
+                type="button"
+                onClick={() => setIsSupportModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 cursor-pointer"
               >
                 <Icon name="message" />
                 Support
-              </a>
-              <a
-                aria-label="Buka profil"
-                className="ml-1 inline-grid size-9 place-items-center rounded-full border border-slate-200 text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
-                href="#profile"
+              </button>
+              <button
+                type="button"
+                aria-label="Buka profil & alokasi memori"
+                onClick={() => {
+                  setProfileDefaultTab('specs');
+                  setIsProfileModalOpen(true);
+                }}
+                className="ml-1 inline-grid size-9 place-items-center rounded-full border border-slate-200 text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 cursor-pointer"
               >
                 <Icon name="user" />
-              </a>
+              </button>
             </div>
 
             <button
@@ -1912,7 +1932,14 @@ function App() {
               className="border-t border-slate-200 py-3 md:hidden"
               id="mobile-navigation"
             >
-              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
+              <div
+                onClick={() => {
+                  toggleMobileMenu();
+                  setProfileDefaultTab('limits');
+                  setIsProfileModalOpen(true);
+                }}
+                className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5 cursor-pointer hover:bg-slate-100 transition"
+              >
                 <span className="text-sm font-medium text-slate-600">
                   mungil.my.id
                 </span>
@@ -1921,22 +1948,29 @@ function App() {
                 </span>
               </div>
               <div className="mt-2 grid gap-1">
-                <a
-                  className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-                  href="#support"
-                  onClick={toggleMobileMenu}
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 text-left cursor-pointer"
+                  onClick={() => {
+                    toggleMobileMenu();
+                    setIsSupportModalOpen(true);
+                  }}
                 >
                   <Icon name="message" />
-                  Support
-                </a>
-                <a
-                  className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-                  href="#profile"
-                  onClick={toggleMobileMenu}
+                  Support & Bantuan
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 text-left cursor-pointer"
+                  onClick={() => {
+                    toggleMobileMenu();
+                    setProfileDefaultTab('specs');
+                    setIsProfileModalOpen(true);
+                  }}
                 >
                   <Icon name="user" />
-                  Profil
-                </a>
+                  Profil & Memori
+                </button>
               </div>
             </div>
           ) : null}
@@ -2233,12 +2267,16 @@ function App() {
               <div className="mt-6 space-y-3">
                 <p className="text-sm text-slate-500">
                   Ukuran file maksimum 1GB.{' '}
-                  <a
-                    className="font-medium text-indigo-600 hover:text-indigo-700 underline"
-                    href="#registrasi"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileDefaultTab('limits');
+                      setIsProfileModalOpen(true);
+                    }}
+                    className="font-medium text-indigo-600 hover:text-indigo-700 underline cursor-pointer"
                   >
-                    Daftar gratis untuk file lebih besar
-                  </a>
+                    Pelajari kapasitas & alokasi memori
+                  </button>
                 </p>
                 <p className="text-xs text-slate-400">
                   Dengan mengunggah file, Anda menyetujui{' '}
@@ -2254,13 +2292,9 @@ function App() {
                 {/* Cloudflare Turnstile */}
                 <div
                   className="mx-auto flex justify-center"
-                  id="turnstile-placeholder"
+                  id="turnstile-container"
                 >
-                  <div
-                    className="cf-turnstile"
-                    data-sitekey="0x4AAAAAADu46RXWxLxLRnbN"
-                    data-theme="light"
-                  ></div>
+                  <TurnstileWidget />
                 </div>
 
                 {/* Mobile Ad Banner */}
@@ -2296,6 +2330,17 @@ function App() {
         diffs={activeDiffs}
         onConfirm={handleConfirmDiffModal}
         onCancel={handleCancelDiffModal}
+      />
+
+      <SupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+      />
+
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        defaultTab={profileDefaultTab}
+        onClose={() => setIsProfileModalOpen(false)}
       />
 
       <Footer />

@@ -18,11 +18,25 @@ export class FFmpegEngine {
 
   async load(): Promise<void> {
     const startTime = performance.now();
+    const coreURL = '/engines/video/ffmpeg-core.js';
+    const wasmURL = '/engines/video/ffmpeg-core.wasm';
+
     try {
+      // Check if WASM binaries exist in public assets
+      if (typeof window !== 'undefined') {
+        const check = await fetch(coreURL, { method: 'HEAD' }).catch(
+          () => null
+        );
+        if (!check || !check.ok) {
+          throw new Error(
+            'Modul FFmpeg WASM (/engines/video/ffmpeg-core.js) belum dipasang di aset publik aplikasi. Fitur konversi video saat ini dinonaktifkan.'
+          );
+        }
+      }
+
       await this.ffmpeg.load({
-        // The core WASM files are served from /public/engines/video/
-        coreURL: '/engines/video/ffmpeg-core.js',
-        wasmURL: '/engines/video/ffmpeg-core.wasm',
+        coreURL,
+        wasmURL,
       });
       this.loaded = true;
       EngineLogger.log({

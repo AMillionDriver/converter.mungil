@@ -1,6 +1,7 @@
 import { type EngineMetadata } from './engine-types';
 import { CacheManager } from './cache-manager';
 import { StorageManager } from './storage-manager';
+import { SecurityHardener } from './security-hardener';
 
 export interface EngineLoadStatus {
   status: 'idle' | 'loading' | 'verifying' | 'installed' | 'error';
@@ -97,7 +98,24 @@ class ForgeDownloadTask {
   }
 
   private async verify(): Promise<void> {
-    // Simulate checksum verification
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (
+      this.metadata.checksum &&
+      this.metadata.checksum !== 'local' &&
+      this.metadata.checksum !== 'builtin'
+    ) {
+      const cached = await CacheManager.get(this.metadata.script);
+      if (cached) {
+        const buffer = await cached.arrayBuffer();
+        const isValid = await SecurityHardener.validateEngineIntegrity(
+          buffer,
+          this.metadata.checksum
+        );
+        if (!isValid) {
+          throw new Error(
+            `Integritas biner engine ${this.engineId} gagal diverifikasi (Checksum mismatch).`
+          );
+        }
+      }
+    }
   }
 }

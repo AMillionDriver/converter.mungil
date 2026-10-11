@@ -1,3 +1,5 @@
+import { ObservabilityManager } from './observability-manager';
+
 export interface PerformanceMetric {
   engineId: string;
   inputSize: number;
@@ -48,7 +50,21 @@ export class PerformanceProfiler {
   }
 
   static async saveMetric(metric: PerformanceMetric): Promise<void> {
-    // In a real app, this would be sent to the ObservabilityManager
-    console.log('[Profiler] Metric saved:', metric);
+    await ObservabilityManager.logMetric({
+      conversionId: `prof-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      type: metric.engineId,
+      engineVersion: '1.0.0',
+      durationMs: metric.durationMs,
+      success: true,
+      cacheHit: metric.cacheHit,
+      browser: typeof navigator !== 'undefined' ? navigator.userAgent : 'node',
+      deviceClass:
+        typeof navigator !== 'undefined' &&
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+          ? 'mobile'
+          : 'desktop',
+      fileSize: metric.inputSize,
+      timestamp: metric.timestamp,
+    });
   }
 }

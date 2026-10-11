@@ -9,6 +9,8 @@ export interface FileValidatorConfig {
   allowedExtensions: string[];
 }
 
+import { SecurityHardener } from './security-hardener';
+
 export class FileValidator {
   // Signature rules per extension, with offsets for formats that need it
   // Signature rules per extension, allowing multiple valid signature variants
@@ -94,6 +96,18 @@ export class FileValidator {
         error:
           'File signature mismatch. The file content does not match its extension.',
       };
+    }
+
+    // 5. Zip Bomb Security Check
+    if (extension === 'docx' || extension === 'zip') {
+      const isBomb = await SecurityHardener.checkForZipBomb(file);
+      if (isBomb) {
+        return {
+          isValid: false,
+          error:
+            'File terdeteksi memiliki struktur kompresi berbahaya (indikasi Zip Bomb).',
+        };
+      }
     }
 
     return { isValid: true };
