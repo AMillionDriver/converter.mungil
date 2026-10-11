@@ -35,7 +35,8 @@ export class PdfTableExtractor {
     if (tokens.length === 0) return [];
 
     // 1. Group tokens into horizontal visual lines based on baseline Y
-    const visualLines: { y: number; height: number; tokens: TextToken[] }[] = [];
+    const visualLines: { y: number; height: number; tokens: TextToken[] }[] =
+      [];
 
     // Sort tokens by Y descending (top-to-bottom in PDF coordinate space)
     const sortedTokens = [...tokens].sort((a, b) => b.y - a.y);
@@ -44,7 +45,10 @@ export class PdfTableExtractor {
       const h = Math.abs(token.height) || 10;
       const lastLine = visualLines[visualLines.length - 1];
 
-      if (lastLine && Math.abs(lastLine.y - token.y) <= Math.max(lastLine.height, h) * 0.4) {
+      if (
+        lastLine &&
+        Math.abs(lastLine.y - token.y) <= Math.max(lastLine.height, h) * 0.4
+      ) {
         lastLine.tokens.push(token);
         continue;
       }
@@ -106,7 +110,11 @@ export class PdfTableExtractor {
             cellStartX = t.x;
             currentCellText = t.str;
           } else {
-            if (gap > 2 && !currentCellText.endsWith(' ') && !t.str.startsWith(' ')) {
+            if (
+              gap > 2 &&
+              !currentCellText.endsWith(' ') &&
+              !t.str.startsWith(' ')
+            ) {
               currentCellText += ' ';
             }
             currentCellText += t.str;
@@ -240,14 +248,16 @@ export class PdfTableExtractor {
     // Calculate approximate column widths in points
     const colWidthsPt: number[] = [];
     for (let c = 0; c < colAnchors.length; c++) {
-      const nextX = colAnchors[c + 1] ?? (colAnchors[c] + 120);
+      const nextX = colAnchors[c + 1] ?? colAnchors[c] + 120;
       colWidthsPt.push(Math.max(50, nextX - colAnchors[c]));
     }
 
     const minY = tableLines[tableLines.length - 1].y;
     const maxY = tableLines[0].y;
     const minX = colAnchors[0];
-    const maxX = colAnchors[colAnchors.length - 1] + (colWidthsPt[colWidthsPt.length - 1] || 100);
+    const maxX =
+      colAnchors[colAnchors.length - 1] +
+      (colWidthsPt[colWidthsPt.length - 1] || 100);
 
     return {
       headers,

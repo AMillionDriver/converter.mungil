@@ -1,30 +1,38 @@
-name: Semantic Release & Changelog
+name: Semantic Release & Cloudflare Pages Deploy
 
 on:
   push:
     branches:
       - main
 
+concurrency:
+  group: production-release-deploy
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Generate Tag & Release
+    name: Calculate Semantic Version & Release
     runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      has_release: ${{ steps.tag_version.outputs.new_tag != '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Calculate Semantic Version
+      - name: Calculate Semantic Version from Conventional Commits
         uses: mathieudutour/github-tag-action@v6.2
         id: tag_version
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: patch
+          default_bump: false
           tag_prefix: v
+          release_branches: main
 
       - name: Create GitHub Release with Changelog
         uses: softprops/action-gh-release@v2
@@ -36,3 +44,46 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    name: Deploy to Cloudflare Pages (converter.mungil.my.id)
+    runs-on: ubuntu-latest
+    needs: [release]
+    defaults:
+      run:
+        working-directory: APP
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: APP/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Production Web App
+        run: npm run build
+
+      - name: Check Cloudflare Deployment Credentials
+        id: check_credentials
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "::warning ::Cloudflare Secrets (CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID) are missing. Skipping direct upload."
+            echo "has_secrets=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_secrets=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to Cloudflare Pages via Wrangler
+        if: steps.check_credentials.outputs.has_secrets == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=converter-mungil --branch=main
+        working-directory: APP

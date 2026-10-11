@@ -7,7 +7,8 @@ import { PdfTableExtractor, type TextToken } from './pdf-table-extractor';
 // Register the worker module directly on globalThis so PDF.js runs in-thread
 // without nested worker or window.location dependencies in Web Worker environments.
 if (typeof globalThis !== 'undefined') {
-  (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker = pdfjsWorker;
+  (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker =
+    pdfjsWorker;
 }
 
 export interface ExtractedPdfPage {
@@ -166,7 +167,11 @@ export class DocumentConverter {
 
           // Group into visual lines based on baseline Y
           // Fast spatial locality check: check last added line & recent lines before fallback
-          const visualLines: { y: number; height: number; items: TextItemLike[] }[] = [];
+          const visualLines: {
+            y: number;
+            height: number;
+            items: TextItemLike[];
+          }[] = [];
           for (const item of items) {
             const y = item.transform[5];
             const h = Math.abs(item.height) || 10;
@@ -391,7 +396,9 @@ export class DocumentConverter {
     }
 
     // Fallback: emit text lines into a 1-column spreadsheet
-    const lines = pages.flatMap((p) => p.lines).filter((l) => l.trim().length > 0);
+    const lines = pages
+      .flatMap((p) => p.lines)
+      .filter((l) => l.trim().length > 0);
     if (lines.length === 0) {
       return this.buildXlsxPackage(
         ['Kolom 1'],
@@ -424,14 +431,10 @@ export class DocumentConverter {
     const isLandscape = headers.length > 5;
     const narrowMargins = headers.length > 8;
 
-    return this.buildDocxPackage(
-      tableXml,
-      file.name.replace(/\.[^/.]+$/, ''),
-      {
-        landscape: isLandscape,
-        narrowMargins,
-      }
-    );
+    return this.buildDocxPackage(tableXml, file.name.replace(/\.[^/.]+$/, ''), {
+      landscape: isLandscape,
+      narrowMargins,
+    });
   }
 
   /**
@@ -489,9 +492,13 @@ export class DocumentConverter {
    */
   static async xlsxToPdf(file: File): Promise<Blob> {
     const csvBlob = await this.xlsxToCsv(file);
-    const csvFile = new File([csvBlob], file.name.replace(/\.[^/.]+$/, '.csv'), {
-      type: 'text/csv',
-    });
+    const csvFile = new File(
+      [csvBlob],
+      file.name.replace(/\.[^/.]+$/, '.csv'),
+      {
+        type: 'text/csv',
+      }
+    );
     return this.csvToPdf(csvFile);
   }
 
@@ -500,9 +507,13 @@ export class DocumentConverter {
    */
   static async docxToPdf(file: File): Promise<Blob> {
     const txtBlob = await this.docxToTxt(file);
-    const txtFile = new File([txtBlob], file.name.replace(/\.[^/.]+$/, '.txt'), {
-      type: 'text/plain',
-    });
+    const txtFile = new File(
+      [txtBlob],
+      file.name.replace(/\.[^/.]+$/, '.txt'),
+      {
+        type: 'text/plain',
+      }
+    );
     return this.txtToPdf(txtFile);
   }
 
@@ -604,14 +615,10 @@ export class DocumentConverter {
       narrowMargins,
     });
 
-    return this.buildDocxPackage(
-      tableXml,
-      file.name.replace(/\.[^/.]+$/, ''),
-      {
-        landscape: isLandscape,
-        narrowMargins,
-      }
-    );
+    return this.buildDocxPackage(tableXml, file.name.replace(/\.[^/.]+$/, ''), {
+      landscape: isLandscape,
+      narrowMargins,
+    });
   }
 
   /**
@@ -662,7 +669,9 @@ export class DocumentConverter {
       const sumCalculated = colWidthsDxa.reduce((acc, w) => acc + w, 0);
       if (sumCalculated < usableWidthDxa) {
         const extra = usableWidthDxa - sumCalculated;
-        colWidthsDxa = colWidthsDxa.map((w) => w + Math.floor(extra / colCount));
+        colWidthsDxa = colWidthsDxa.map(
+          (w) => w + Math.floor(extra / colCount)
+        );
       }
     }
 
@@ -811,7 +820,8 @@ export class DocumentConverter {
     const usableWidth = pageWidth - margin * 2;
     const colWidth = usableWidth / colCount;
 
-    const fontSize = colCount > 15 ? 6.5 : colCount > 8 ? 7 : colCount > 5 ? 8 : 9;
+    const fontSize =
+      colCount > 15 ? 6.5 : colCount > 8 ? 7 : colCount > 5 ? 8 : 9;
     const headerHeight = 22;
     const rowHeight = 18;
 
@@ -1248,7 +1258,10 @@ export class DocumentConverter {
       )
       .join('');
 
-    return this.buildDocxPackage(paragraphsXml, file.name.replace(/\.[^/.]+$/, ''));
+    return this.buildDocxPackage(
+      paragraphsXml,
+      file.name.replace(/\.[^/.]+$/, '')
+    );
   }
 
   /**
@@ -1302,7 +1315,10 @@ export class DocumentConverter {
   /**
    * Parses XLSX spreadsheet archive and extracts headers and cell rows
    */
-  static parseXlsx(buffer: ArrayBuffer | Uint8Array): { headers: string[]; rows: string[][] } {
+  static parseXlsx(buffer: ArrayBuffer | Uint8Array): {
+    headers: string[];
+    rows: string[][];
+  } {
     const unzipped = fflate.unzipSync(new Uint8Array(buffer));
 
     // 1. Parse shared strings if present
@@ -1348,7 +1364,8 @@ export class DocumentConverter {
     };
 
     for (const rXml of rowMatches) {
-      const cellMatches = rXml.match(/<c[^>]*>[\s\S]*?<\/c>|<c[^>]*\/>/gi) || [];
+      const cellMatches =
+        rXml.match(/<c[^>]*>[\s\S]*?<\/c>|<c[^>]*\/>/gi) || [];
       const rowData: string[] = [];
 
       for (const cXml of cellMatches) {
@@ -1367,7 +1384,9 @@ export class DocumentConverter {
           const vMatch = cXml.match(/<v>([0-9]+)<\/v>/i);
           const sstIdx = vMatch ? parseInt(vMatch[1], 10) : -1;
           rowData[colIdx] =
-            sstIdx >= 0 && sstIdx < sharedStrings.length ? sharedStrings[sstIdx] : '';
+            sstIdx >= 0 && sstIdx < sharedStrings.length
+              ? sharedStrings[sstIdx]
+              : '';
         } else if (cellType === 'inlineStr') {
           const tSub = cXml.match(/<t[^>]*>([\s\S]*?)<\/t>/i);
           rowData[colIdx] = tSub ? this.unescapeXml(tSub[1]) : '';
@@ -1402,7 +1421,10 @@ export class DocumentConverter {
   /**
    * Parses DOCX tables or paragraphs into structured tabular rows
    */
-  static parseDocxTables(buffer: ArrayBuffer | Uint8Array): { headers: string[]; rows: string[][] } {
+  static parseDocxTables(buffer: ArrayBuffer | Uint8Array): {
+    headers: string[];
+    rows: string[][];
+  } {
     const unzipped = fflate.unzipSync(new Uint8Array(buffer));
     const docXmlBytes = unzipped['word/document.xml'];
     if (!docXmlBytes) {

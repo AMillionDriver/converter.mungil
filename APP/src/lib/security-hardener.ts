@@ -167,7 +167,10 @@ export class SecurityHardener {
       };
     }
 
-    if (totalUncompressed > MAX_UNCOMPRESSED_LIMIT && bytes.length < 50 * 1024 * 1024) {
+    if (
+      totalUncompressed > MAX_UNCOMPRESSED_LIMIT &&
+      bytes.length < 50 * 1024 * 1024
+    ) {
       return {
         isBomb: true,
         compressionRatio: ratio,
@@ -200,7 +203,8 @@ export class SecurityHardener {
     buffer: ArrayBuffer | Uint8Array,
     expectedFormat: string
   ): boolean {
-    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    const bytes =
+      buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
     if (bytes.length < 4) return false;
 
     const fmt = expectedFormat.toLowerCase().replace(/^\./, '');
@@ -266,7 +270,8 @@ export class SecurityHardener {
     buffer: ArrayBuffer | Uint8Array,
     maxPixels: number = 40_000_000
   ): { width: number; height: number; isPixelFlood: boolean } | null {
-    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    const bytes =
+      buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
     // 1. Check PNG IHDR chunk (Offset 16 to 24)

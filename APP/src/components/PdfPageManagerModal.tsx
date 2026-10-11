@@ -5,7 +5,8 @@ import { PdfPageEngine } from '../engines/document/pdf-page-engine';
 import { DownloadManager } from '../lib/download-manager';
 
 if (typeof globalThis !== 'undefined') {
-  (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker = pdfjsWorker;
+  (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker =
+    pdfjsWorker;
 }
 
 interface PageItem {
@@ -568,7 +569,8 @@ export function PdfPageManagerModal({
                 Kelola Halaman PDF — {file.name}
               </h3>
               <p className="text-xs text-slate-500">
-                Atur urutan, putar (rotate), hapus, atau ekstrak halaman dokumen secara visual.
+                Atur urutan, putar (rotate), hapus, atau ekstrak halaman dokumen
+                secara visual.
               </p>
             </div>
           </div>
@@ -792,7 +794,9 @@ export function PdfPageManagerModal({
                           </span>
                         )}
                         <span>
-                          {p.isBlank ? '(Kosong)' : `(Hal. ${p.originalIndex + 1})`}
+                          {p.isBlank
+                            ? '(Kosong)'
+                            : `(Hal. ${p.originalIndex + 1})`}
                         </span>
                       </div>
                     </div>
@@ -1033,7 +1037,8 @@ export function PdfPageManagerModal({
               </span>
             ) : (
               <span>
-                Tips: Seret (drag & drop) kartu untuk menyusun ulang posisi halaman.
+                Tips: Seret (drag & drop) kartu untuk menyusun ulang posisi
+                halaman.
               </span>
             )}
           </div>
@@ -1263,7 +1268,8 @@ export function PdfPageManagerModal({
                     Lembar Halaman Kosong
                   </p>
                   <p className="text-xs text-slate-500 mt-1.5 max-w-xs">
-                    Halaman ini disisipkan sebagai lembar kosong putih dan akan disertakan saat diekspor.
+                    Halaman ini disisipkan sebagai lembar kosong putih dan akan
+                    disertakan saat diekspor.
                   </p>
                 </div>
               ) : (
@@ -1312,7 +1318,19 @@ export function PdfPageManagerModal({
 
           {/* Bottom Bar Hints */}
           <div className="text-center text-xs text-slate-400 shrink-0 py-1">
-            Gunakan tombol panah keyboard <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">←</kbd> dan <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">→</kbd> untuk berpindah halaman • Tekan <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">ESC</kbd> untuk keluar
+            Gunakan tombol panah keyboard{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">
+              ←
+            </kbd>{' '}
+            dan{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">
+              →
+            </kbd>{' '}
+            untuk berpindah halaman • Tekan{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">
+              ESC
+            </kbd>{' '}
+            untuk keluar
           </div>
         </div>
       )}

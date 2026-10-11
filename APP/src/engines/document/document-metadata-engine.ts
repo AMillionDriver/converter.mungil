@@ -91,10 +91,7 @@ export class DocumentMetadataEngine {
           colCount = lines[0].split(',').length;
         }
       } catch (err) {
-        console.warn(
-          '[DocumentMetadataEngine] Gagal membaca baris CSV:',
-          err
-        );
+        console.warn('[DocumentMetadataEngine] Gagal membaca baris CSV:', err);
       }
       resultMeta.title = file.name.replace(/\.[^/.]+$/, '');
       resultMeta.author = '';

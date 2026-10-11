@@ -140,15 +140,22 @@ export function TextViewer({ file }: TextViewerProps) {
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 text-xs text-slate-600">
         <div className="flex items-center gap-3">
           <span>
-            <span className="font-bold text-slate-900">{lines.length}</span> Baris
+            <span className="font-bold text-slate-900">{lines.length}</span>{' '}
+            Baris
           </span>
           <span>•</span>
           <span>
-            <span className="font-bold text-slate-900">{wordCount.toLocaleString()}</span> Kata
+            <span className="font-bold text-slate-900">
+              {wordCount.toLocaleString()}
+            </span>{' '}
+            Kata
           </span>
           <span>•</span>
           <span>
-            <span className="font-bold text-slate-900">{content.length.toLocaleString()}</span> Karakter
+            <span className="font-bold text-slate-900">
+              {content.length.toLocaleString()}
+            </span>{' '}
+            Karakter
           </span>
         </div>
 

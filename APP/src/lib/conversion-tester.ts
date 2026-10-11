@@ -77,7 +77,10 @@ export class ConversionTester {
         output: string
       ) => Promise<{
         id: string;
-        convert?: (file: File, options?: Record<string, unknown>) => Promise<Blob>;
+        convert?: (
+          file: File,
+          options?: Record<string, unknown>
+        ) => Promise<Blob>;
       }>;
     },
     testCases: TestCase[] = this.getStandardMatrix()
@@ -172,7 +175,8 @@ export class ConversionTester {
         inputFormat: 'csv',
         outputFormat: 'xlsx',
         expectedResult: 'success',
-        description: 'Verifikasi pembentukan tabel XLSX dengan autofilter dan header beku.',
+        description:
+          'Verifikasi pembentukan tabel XLSX dengan autofilter dan header beku.',
       },
       {
         id: 'T2',
@@ -180,7 +184,8 @@ export class ConversionTester {
         inputFormat: 'csv',
         outputFormat: 'docx',
         expectedResult: 'success',
-        description: 'Verifikasi pembuatan file Word DOCX dengan grid tabel rapi.',
+        description:
+          'Verifikasi pembuatan file Word DOCX dengan grid tabel rapi.',
       },
       {
         id: 'T3',
@@ -196,7 +201,8 @@ export class ConversionTester {
         inputFormat: 'json',
         outputFormat: 'txt',
         expectedResult: 'success',
-        description: 'Verifikasi ekstraksi data JSON ke format teks terstruktur.',
+        description:
+          'Verifikasi ekstraksi data JSON ke format teks terstruktur.',
       },
       {
         id: 'T5',

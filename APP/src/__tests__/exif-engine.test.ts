@@ -205,4 +205,3 @@ describe('ExifEngine - Metadata Diff & Modification Tracking', () => {
     expect(parsed.exif.Model).toBeUndefined();
   });
 });
-

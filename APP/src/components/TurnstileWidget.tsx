@@ -30,7 +30,8 @@ interface TurnstileWidgetProps {
 }
 
 export function TurnstileWidget({
-  siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA',
+  siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY ||
+    '1x00000000000000000000AA',
   onVerify,
   onExpire,
   onError,
@@ -39,7 +40,9 @@ export function TurnstileWidget({
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [, setToken] = useState<string | null>(null);
-  const [status, setStatus] = useState<'loading' | 'verified' | 'error' | 'offline'>('loading');
+  const [status, setStatus] = useState<
+    'loading' | 'verified' | 'error' | 'offline'
+  >('loading');
 
   useEffect(() => {
     let isMounted = true;
@@ -146,7 +149,10 @@ export function TurnstileWidget({
   return (
     <div className={`flex flex-col items-center justify-center ${className}`}>
       {/* Cloudflare Turnstile Render Target */}
-      <div ref={containerRef} className="min-h-[65px] flex items-center justify-center" />
+      <div
+        ref={containerRef}
+        className="min-h-[65px] flex items-center justify-center"
+      />
 
       {/* Verified / Offline Status Badge */}
       {status === 'verified' && (
@@ -159,7 +165,11 @@ export function TurnstileWidget({
             viewBox="0 0 24 24"
             aria-hidden="true"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="m4.5 12.75 6 6 9-13.5"
+            />
           </svg>
           <span>Proteksi Bot Cloudflare Terverifikasi</span>
         </div>

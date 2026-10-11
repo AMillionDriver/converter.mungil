@@ -175,8 +175,8 @@ export function SupportModal({ isOpen, onClose }: SupportModalProps) {
                   Mengalami Kendala Teknis atau Bug?
                 </h4>
                 <p className="text-xs text-slate-600 mt-1">
-                  Salin informasi diagnostik perangkat Anda untuk disertakan saat
-                  melaporkan kendala kepada tim kami.
+                  Salin informasi diagnostik perangkat Anda untuk disertakan
+                  saat melaporkan kendala kepada tim kami.
                 </p>
               </div>
 

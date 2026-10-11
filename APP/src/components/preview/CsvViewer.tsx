@@ -191,8 +191,11 @@ export function CsvViewer({ file }: CsvViewerProps) {
         {/* Stats and Row Limit Selector */}
         <div className="flex items-center gap-3 text-slate-600">
           <span>
-            Total: <span className="font-bold text-slate-900">{rows.length}</span> baris,{' '}
-            <span className="font-bold text-slate-900">{headers.length}</span> kolom
+            Total:{' '}
+            <span className="font-bold text-slate-900">{rows.length}</span>{' '}
+            baris,{' '}
+            <span className="font-bold text-slate-900">{headers.length}</span>{' '}
+            kolom
           </span>
 
           <div className="flex items-center gap-1.5">

@@ -160,7 +160,8 @@ export class ObservabilityManager {
     const summary = this.getMetricsSummary();
     const metrics = this.getStoredMetrics().slice(0, 10);
 
-    const memoryGB = (nav as unknown as { deviceMemory?: number })?.deviceMemory || 'N/A';
+    const memoryGB =
+      (nav as unknown as { deviceMemory?: number })?.deviceMemory || 'N/A';
     const cores = nav?.hardwareConcurrency || 'N/A';
 
     return [

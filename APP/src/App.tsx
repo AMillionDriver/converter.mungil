@@ -323,8 +323,7 @@ function Dropzone({
           !(ext === 'jpg' && f === 'jpeg') &&
           !(ext === 'jpeg' && f === 'jpg')
       );
-      const formats =
-        crossFormats.length > 0 ? crossFormats : allOutputs;
+      const formats = crossFormats.length > 0 ? crossFormats : allOutputs;
       if (formats.length === 0) {
         alert(`No conversion options available for .${ext} files`);
         setUploadedFiles([]);
@@ -1137,12 +1136,12 @@ function Dropzone({
                 {activeMetadata &&
                   Boolean(
                     activeMetadata.exif.Make ||
-                      activeMetadata.exif.Model ||
-                      activeMetadata.exif.Artist ||
-                      activeMetadata.exif.DateTimeOriginal ||
-                      activeMetadata.exif.GPSLatitude !== undefined ||
-                      editedExif.Make ||
-                      editedExif.Model
+                    activeMetadata.exif.Model ||
+                    activeMetadata.exif.Artist ||
+                    activeMetadata.exif.DateTimeOriginal ||
+                    activeMetadata.exif.GPSLatitude !== undefined ||
+                    editedExif.Make ||
+                    editedExif.Model
                   ) && (
                     <>
                       <button
@@ -1190,9 +1189,9 @@ function Dropzone({
                 {activeDocMetadata?.metadata &&
                   Boolean(
                     activeDocMetadata.metadata.title ||
-                      activeDocMetadata.metadata.author ||
-                      editedDocMetadata?.title ||
-                      editedDocMetadata?.author
+                    activeDocMetadata.metadata.author ||
+                    editedDocMetadata?.title ||
+                    editedDocMetadata?.author
                   ) && (
                     <>
                       <button
@@ -1501,10 +1500,14 @@ function Dropzone({
                           ? `Simpan ${activeDocMetadata.pageCount} Halaman (PDF)`
                           : 'Simpan File Asli'
                         : activeDocMetadata?.pageCount &&
-                            uploadedFiles[0]?.name.toLowerCase().endsWith('.pdf')
+                            uploadedFiles[0]?.name
+                              .toLowerCase()
+                              .endsWith('.pdf')
                           ? `Konversi ${activeDocMetadata.pageCount} Halaman ke ${selectedFormat.toUpperCase()}`
                           : activeDocMetadata?.rowCount !== undefined &&
-                              uploadedFiles[0]?.name.toLowerCase().endsWith('.csv')
+                              uploadedFiles[0]?.name
+                                .toLowerCase()
+                                .endsWith('.csv')
                             ? `Konversi ${activeDocMetadata.rowCount.toLocaleString()} Baris ke ${selectedFormat.toUpperCase()}`
                             : t('dropzone.convertBtn')}
             </button>
@@ -1714,7 +1717,8 @@ function Footer() {
 
         <div className="mt-8 text-center">
           <p className="text-xs text-slate-400">
-            &copy; {new Date().getFullYear()} Mungil Converter. {t('footer.copyright')}
+            &copy; {new Date().getFullYear()} Mungil Converter.{' '}
+            {t('footer.copyright')}
           </p>
         </div>
       </div>
@@ -1747,7 +1751,9 @@ function App() {
 
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [profileDefaultTab, setProfileDefaultTab] = useState<'specs' | 'limits'>('specs');
+  const [profileDefaultTab, setProfileDefaultTab] = useState<
+    'specs' | 'limits'
+  >('specs');
 
   useEngineRegistry();
 
@@ -2006,7 +2012,9 @@ function App() {
             </button>
 
             <div className="hidden items-center gap-2 md:flex">
-              <LanguageSelector onLanguageChangeStart={handleLanguageChangeStart} />
+              <LanguageSelector
+                onLanguageChangeStart={handleLanguageChangeStart}
+              />
               <button
                 type="button"
                 onClick={() => setIsSupportModalOpen(true)}

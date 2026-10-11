@@ -28,7 +28,10 @@ describe('SecurityHardener - Path Traversal, Integrity & Zip Bomb Verification',
     const data = new TextEncoder().encode('Binary engine payload 12345');
     const actualHash = await SecurityHardener.calculateChecksum(data);
 
-    const isValid = await SecurityHardener.validateEngineIntegrity(data, actualHash);
+    const isValid = await SecurityHardener.validateEngineIntegrity(
+      data,
+      actualHash
+    );
     expect(isValid).toBe(true);
 
     const isInvalid = await SecurityHardener.validateEngineIntegrity(
@@ -54,7 +57,10 @@ describe('SecurityHardener - Path Traversal, Integrity & Zip Bomb Verification',
         if (input === 'exe') throw new Error('Unsupported format exe');
         return {
           id: `engine:${input}:${output}`,
-          convert: async (file: File) => new Blob([await file.arrayBuffer()], { type: 'application/octet-stream' }),
+          convert: async (file: File) =>
+            new Blob([await file.arrayBuffer()], {
+              type: 'application/octet-stream',
+            }),
         };
       },
     };
@@ -67,7 +73,9 @@ describe('SecurityHardener - Path Traversal, Integrity & Zip Bomb Verification',
 
   it('should validate binary magic bytes correctly and reject spoofed headers', () => {
     // Valid PNG header
-    const pngHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const pngHeader = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
     expect(SecurityHardener.validateMagicBytes(pngHeader, 'png')).toBe(true);
     expect(SecurityHardener.validateMagicBytes(pngHeader, 'jpeg')).toBe(false);
 
@@ -77,7 +85,9 @@ describe('SecurityHardener - Path Traversal, Integrity & Zip Bomb Verification',
     expect(SecurityHardener.validateMagicBytes(jpegHeader, 'png')).toBe(false);
 
     // Valid PDF header
-    const pdfHeader = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
+    const pdfHeader = new Uint8Array([
+      0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37,
+    ]);
     expect(SecurityHardener.validateMagicBytes(pdfHeader, 'pdf')).toBe(true);
     expect(SecurityHardener.validateMagicBytes(pdfHeader, 'png')).toBe(false);
 
@@ -99,7 +109,10 @@ describe('SecurityHardener - Path Traversal, Integrity & Zip Bomb Verification',
     view.setUint32(16, 10000, false); // width: 10,000
     view.setUint32(20, 10000, false); // height: 10,000
 
-    const floodCheck = SecurityHardener.inspectImageDimensions(pngBuffer, 40_000_000);
+    const floodCheck = SecurityHardener.inspectImageDimensions(
+      pngBuffer,
+      40_000_000
+    );
     expect(floodCheck).not.toBeNull();
     expect(floodCheck?.width).toBe(10000);
     expect(floodCheck?.height).toBe(10000);
@@ -108,7 +121,10 @@ describe('SecurityHardener - Path Traversal, Integrity & Zip Bomb Verification',
     // Normal image: 800 x 600 = 480,000 pixels
     view.setUint32(16, 800, false);
     view.setUint32(20, 600, false);
-    const normalCheck = SecurityHardener.inspectImageDimensions(pngBuffer, 40_000_000);
+    const normalCheck = SecurityHardener.inspectImageDimensions(
+      pngBuffer,
+      40_000_000
+    );
     expect(normalCheck?.isPixelFlood).toBe(false);
   });
 });

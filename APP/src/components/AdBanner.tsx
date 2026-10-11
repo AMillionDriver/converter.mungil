@@ -162,7 +162,8 @@ export function AdBanner({
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 line-clamp-1">
-                  Infrastruktur cloud ultra-cepat untuk deployment web modern dengan proteksi DDoS bawaan.
+                  Infrastruktur cloud ultra-cepat untuk deployment web modern
+                  dengan proteksi DDoS bawaan.
                 </p>
               </div>
             </div>

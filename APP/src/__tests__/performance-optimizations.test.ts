@@ -24,12 +24,20 @@ import { FFmpegEngine } from '../engines/video/ffmpeg-wrapper';
 describe('Core Engine Performance & Optimization Verification', () => {
   describe('ArchiveEngine Asynchronous Non-blocking Processing', () => {
     it('should compress and decompress multiple files asynchronously with full content integrity', async () => {
-      const file1 = new File(['Hello World! '.repeat(500)], 'large_sample.txt', {
-        type: 'text/plain',
-      });
-      const file2 = new File(['Second file content payload'], 'sub/second.txt', {
-        type: 'text/plain',
-      });
+      const file1 = new File(
+        ['Hello World! '.repeat(500)],
+        'large_sample.txt',
+        {
+          type: 'text/plain',
+        }
+      );
+      const file2 = new File(
+        ['Second file content payload'],
+        'sub/second.txt',
+        {
+          type: 'text/plain',
+        }
+      );
 
       const zipBlob = await ArchiveEngine.zipFiles([file1, file2], {
         compressionLevel: 6,
@@ -42,7 +50,9 @@ describe('Core Engine Performance & Optimization Verification', () => {
       const unzipped = await ArchiveEngine.unzip(zipBlob);
       expect(unzipped).toHaveLength(2);
 
-      const restored1 = unzipped.find((item) => item.name === 'large_sample.txt');
+      const restored1 = unzipped.find(
+        (item) => item.name === 'large_sample.txt'
+      );
       expect(restored1).toBeDefined();
       const text1 = await restored1!.data.text();
       expect(text1).toBe('Hello World! '.repeat(500));
@@ -53,7 +63,8 @@ describe('Core Engine Performance & Optimization Verification', () => {
     it('should efficiently wrap long text with single-pass word width measurements', async () => {
       const longText = Array.from(
         { length: 200 },
-        (_, i) => `Paragraph line ${i + 1}: The quick brown fox jumps over the lazy dog repeatedly to test wrap performance.`
+        (_, i) =>
+          `Paragraph line ${i + 1}: The quick brown fox jumps over the lazy dog repeatedly to test wrap performance.`
       ).join('\n');
 
       const textFile = new File([longText], 'performance_wrap.txt', {

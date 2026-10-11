@@ -4,7 +4,8 @@ import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 
 // Ensure worker is registered in-thread
 if (typeof globalThis !== 'undefined') {
-  (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker = pdfjsWorker;
+  (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker =
+    pdfjsWorker;
 }
 
 interface PdfViewerProps {
@@ -242,7 +243,9 @@ export function PdfViewer({ file }: PdfViewerProps) {
             />
           </svg>
         </div>
-        <h4 className="text-sm font-bold text-slate-800">Pratinjau Tidak Tersedia</h4>
+        <h4 className="text-sm font-bold text-slate-800">
+          Pratinjau Tidak Tersedia
+        </h4>
         <p className="mt-1 text-xs text-slate-500 leading-relaxed">{error}</p>
       </div>
     );
@@ -268,13 +271,17 @@ export function PdfViewer({ file }: PdfViewerProps) {
               strokeWidth="2"
               viewBox="0 0 24 24"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.75 19.5 8.25 12l7.5-7.5"
+              />
             </svg>
           </button>
 
           <span className="px-2 text-slate-600 font-medium whitespace-nowrap">
-            Hal. <span className="font-bold text-slate-900">{currentPage}</span> dari{' '}
-            <span className="font-bold text-slate-900">{numPages}</span>
+            Hal. <span className="font-bold text-slate-900">{currentPage}</span>{' '}
+            dari <span className="font-bold text-slate-900">{numPages}</span>
           </span>
 
           <button
@@ -291,7 +298,11 @@ export function PdfViewer({ file }: PdfViewerProps) {
               strokeWidth="2"
               viewBox="0 0 24 24"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m8.25 4.5 7.5 7.5-7.5 7.5"
+              />
             </svg>
           </button>
         </div>
@@ -314,7 +325,11 @@ export function PdfViewer({ file }: PdfViewerProps) {
                   strokeWidth="2"
                   viewBox="0 0 24 24"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M5 12h14"
+                  />
                 </svg>
               </button>
               <button
@@ -339,7 +354,11 @@ export function PdfViewer({ file }: PdfViewerProps) {
                   strokeWidth="2"
                   viewBox="0 0 24 24"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 4.5v15m7.5-7.5h-15"
+                  />
                 </svg>
               </button>
             </div>

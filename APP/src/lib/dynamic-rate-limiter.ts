@@ -55,7 +55,8 @@ export class DynamicRateLimiter {
       (options.baseRefillRatePerSec ?? 1) * this.hardware.capabilityScore;
     this.refillRate = refillPerSec / 1000;
     this.tokens = this.capacity;
-    this.lastRefillTimestamp = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.lastRefillTimestamp =
+      typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     this.initCrossTabSync();
   }
@@ -70,7 +71,8 @@ export class DynamicRateLimiter {
     if (typeof navigator !== 'undefined') {
       cores = navigator.hardwareConcurrency || 4;
       if ('deviceMemory' in navigator) {
-        memoryGB = (navigator as unknown as { deviceMemory: number }).deviceMemory || 4;
+        memoryGB =
+          (navigator as unknown as { deviceMemory: number }).deviceMemory || 4;
       }
     }
 
@@ -121,7 +123,8 @@ export class DynamicRateLimiter {
    * Refills token bucket lazily on-demand without background intervals
    */
   private refillTokens(): void {
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now =
+      typeof performance !== 'undefined' ? performance.now() : Date.now();
     const elapsed = now - this.lastRefillTimestamp;
 
     if (elapsed > 0) {
@@ -141,7 +144,8 @@ export class DynamicRateLimiter {
     waitMs: number;
     state: RateLimiterState;
   } {
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now =
+      typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     // Check LOCKED state
     if (this.state === RateLimiterState.LOCKED) {
@@ -219,9 +223,12 @@ export class DynamicRateLimiter {
       this.options.maxLockDurationMs ?? 30000,
       baseDuration * Math.pow(2, exponent)
     );
-    const jitteredDuration = Math.round(rawBackoff * (0.8 + Math.random() * 0.4));
+    const jitteredDuration = Math.round(
+      rawBackoff * (0.8 + Math.random() * 0.4)
+    );
 
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now =
+      typeof performance !== 'undefined' ? performance.now() : Date.now();
     this.lockUntilTimestamp = now + jitteredDuration;
 
     this.broadcastChannel?.postMessage({
@@ -232,12 +239,14 @@ export class DynamicRateLimiter {
 
   private applyRemoteLockout(durationMs: number): void {
     this.state = RateLimiterState.LOCKED;
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now =
+      typeof performance !== 'undefined' ? performance.now() : Date.now();
     this.lockUntilTimestamp = now + durationMs;
   }
 
   public getRemainingLockMs(): number {
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now =
+      typeof performance !== 'undefined' ? performance.now() : Date.now();
     return Math.max(0, Math.ceil(this.lockUntilTimestamp - now));
   }
 
@@ -275,8 +284,16 @@ export class DynamicRateLimiter {
    * Yields execution to the browser event loop to avoid main thread freezing
    */
   public async cooperativeYield(): Promise<void> {
-    if (typeof window !== 'undefined' && 'scheduler' in window && 'yield' in (window as unknown as { scheduler: { yield: () => Promise<void> } }).scheduler) {
-      await (window as unknown as { scheduler: { yield: () => Promise<void> } }).scheduler.yield();
+    if (
+      typeof window !== 'undefined' &&
+      'scheduler' in window &&
+      'yield' in
+        (window as unknown as { scheduler: { yield: () => Promise<void> } })
+          .scheduler
+    ) {
+      await (
+        window as unknown as { scheduler: { yield: () => Promise<void> } }
+      ).scheduler.yield();
     } else {
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 0);
@@ -300,7 +317,9 @@ export class DynamicRateLimiter {
       const buffer = encoder.encode(`${seed}:${nonce}`);
       const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+      const hashHex = hashArray
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
 
       if (hashHex.startsWith(targetPrefix)) {
         this.burstAttemptCount = 0;

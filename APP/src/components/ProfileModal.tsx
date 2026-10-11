@@ -162,37 +162,49 @@ export function ProfileModal({
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                   <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 shadow-2xs">
-                    <span className="text-slate-400 block text-[11px]">RAM Perangkat</span>
+                    <span className="text-slate-400 block text-[11px]">
+                      RAM Perangkat
+                    </span>
                     <span className="font-bold text-slate-800 text-sm">
                       ~{capabilities?.memory || 4} GB
                     </span>
                   </div>
                   <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 shadow-2xs">
-                    <span className="text-slate-400 block text-[11px]">CPU Cores</span>
+                    <span className="text-slate-400 block text-[11px]">
+                      CPU Cores
+                    </span>
                     <span className="font-bold text-slate-800 text-sm">
                       {capabilities?.cores || 2} Core
                     </span>
                   </div>
                   <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 shadow-2xs">
-                    <span className="text-slate-400 block text-[11px]">Tier Performa</span>
+                    <span className="text-slate-400 block text-[11px]">
+                      Tier Performa
+                    </span>
                     <span className="font-bold text-indigo-600 capitalize text-sm">
                       {capabilities?.tier || 'Standard'}
                     </span>
                   </div>
                   <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 shadow-2xs">
-                    <span className="text-slate-400 block text-[11px]">WebAssembly</span>
+                    <span className="text-slate-400 block text-[11px]">
+                      WebAssembly
+                    </span>
                     <span className="font-bold text-emerald-600 text-sm">
                       {capabilities?.wasm ? 'Didukung' : 'Tidak'}
                     </span>
                   </div>
                   <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 shadow-2xs">
-                    <span className="text-slate-400 block text-[11px]">Web Worker</span>
+                    <span className="text-slate-400 block text-[11px]">
+                      Web Worker
+                    </span>
                     <span className="font-bold text-emerald-600 text-sm">
                       {capabilities?.worker ? 'Didukung' : 'Tidak'}
                     </span>
                   </div>
                   <div className="rounded-lg bg-white p-2.5 border border-slate-200/80 shadow-2xs">
-                    <span className="text-slate-400 block text-[11px]">IndexedDB</span>
+                    <span className="text-slate-400 block text-[11px]">
+                      IndexedDB
+                    </span>
                     <span className="font-bold text-emerald-600 text-sm">
                       {capabilities?.indexedDB ? 'Tersedia' : 'Tidak'}
                     </span>
@@ -222,7 +234,8 @@ export function ProfileModal({
                 <div className="flex items-center justify-between text-xs text-slate-600 py-1">
                   <span>Total Volume Data:</span>
                   <span className="font-semibold text-slate-900">
-                    {(summary.totalBytesProcessed / (1024 * 1024)).toFixed(2)} MB
+                    {(summary.totalBytesProcessed / (1024 * 1024)).toFixed(2)}{' '}
+                    MB
                   </span>
                 </div>
               </section>
@@ -235,7 +248,8 @@ export function ProfileModal({
                       Bersihkan Cache Engine & Data Lokal
                     </h4>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Menghapus biner engine tersimpan dan menyetel ulang riwayat diagnostik.
+                      Menghapus biner engine tersimpan dan menyetel ulang
+                      riwayat diagnostik.
                     </p>
                   </div>
                   <button
@@ -274,7 +288,10 @@ export function ProfileModal({
                   <span>100% Bebas Kuota Server (Zero-Cost Architecture)</span>
                 </div>
                 <p>
-                  Flowy Converter tidak menggunakan server backend berbayar untuk memproses berkas Anda. Semua mesin konversi dikompilasi menjadi WebAssembly (WASM) dan berjalan di lingkungan terisolasi (sandbox) pada peramban Anda.
+                  Flowy Converter tidak menggunakan server backend berbayar
+                  untuk memproses berkas Anda. Semua mesin konversi dikompilasi
+                  menjadi WebAssembly (WASM) dan berjalan di lingkungan
+                  terisolasi (sandbox) pada peramban Anda.
                 </p>
               </div>
 
@@ -284,13 +301,27 @@ export function ProfileModal({
                 </h4>
                 <ul className="list-disc list-inside space-y-1.5 pl-1">
                   <li>
-                    <strong className="text-slate-800">Bukan Batasan Akun:</strong> Anda tidak memerlukan pendaftaran akun atau biaya langganan untuk mengonversi berkas besar.
+                    <strong className="text-slate-800">
+                      Bukan Batasan Akun:
+                    </strong>{' '}
+                    Anda tidak memerlukan pendaftaran akun atau biaya langganan
+                    untuk mengonversi berkas besar.
                   </li>
                   <li>
-                    <strong className="text-slate-800">Tergantung Memori RAM:</strong> Batas teoretis 1 GB bergantung pada kapasitas RAM bebas di perangkat Anda. Pemrosesan berkas PDF ratusan megabita membutuhkan memori RAM sekitar 2–3x lipat dari ukuran berkas selama proses dekompresi.
+                    <strong className="text-slate-800">
+                      Tergantung Memori RAM:
+                    </strong>{' '}
+                    Batas teoretis 1 GB bergantung pada kapasitas RAM bebas di
+                    perangkat Anda. Pemrosesan berkas PDF ratusan megabita
+                    membutuhkan memori RAM sekitar 2–3x lipat dari ukuran berkas
+                    selama proses dekompresi.
                   </li>
                   <li>
-                    <strong className="text-slate-800">Tips untuk Berkas Sangat Besar:</strong> Tutup tab peramban yang tidak digunakan untuk mengalokasikan ruang memori yang cukup bagi Web Worker.
+                    <strong className="text-slate-800">
+                      Tips untuk Berkas Sangat Besar:
+                    </strong>{' '}
+                    Tutup tab peramban yang tidak digunakan untuk mengalokasikan
+                    ruang memori yang cukup bagi Web Worker.
                   </li>
                 </ul>
               </div>

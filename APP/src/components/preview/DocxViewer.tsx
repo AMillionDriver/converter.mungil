@@ -29,7 +29,9 @@ export function DocxViewer({ file }: DocxViewerProps) {
         const docXmlBytes = unzipped['word/document.xml'];
 
         if (!docXmlBytes) {
-          throw new Error('Berkas DOCX tidak memiliki entri word/document.xml.');
+          throw new Error(
+            'Berkas DOCX tidak memiliki entri word/document.xml.'
+          );
         }
 
         const docXml = fflate.strFromU8(docXmlBytes);
@@ -122,7 +124,9 @@ export function DocxViewer({ file }: DocxViewerProps) {
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           />
         </svg>
-        <span className="text-sm font-medium">Mengekstrak isi dokumen Word...</span>
+        <span className="text-sm font-medium">
+          Mengekstrak isi dokumen Word...
+        </span>
       </div>
     );
   }
@@ -145,7 +149,9 @@ export function DocxViewer({ file }: DocxViewerProps) {
             />
           </svg>
         </div>
-        <h4 className="text-sm font-bold text-slate-800">Gagal Membaca Dokumen</h4>
+        <h4 className="text-sm font-bold text-slate-800">
+          Gagal Membaca Dokumen
+        </h4>
         <p className="mt-1 text-xs text-slate-500 leading-relaxed">{error}</p>
       </div>
     );
@@ -157,11 +163,17 @@ export function DocxViewer({ file }: DocxViewerProps) {
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 text-xs text-slate-600">
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1 font-medium text-slate-700">
-            <span className="font-bold text-slate-900">{paragraphs.length}</span> Paragraf
+            <span className="font-bold text-slate-900">
+              {paragraphs.length}
+            </span>{' '}
+            Paragraf
           </span>
           <span>•</span>
           <span className="inline-flex items-center gap-1 font-medium text-slate-700">
-            <span className="font-bold text-slate-900">{wordCount.toLocaleString()}</span> Kata
+            <span className="font-bold text-slate-900">
+              {wordCount.toLocaleString()}
+            </span>{' '}
+            Kata
           </span>
         </div>
 
@@ -191,7 +203,10 @@ export function DocxViewer({ file }: DocxViewerProps) {
                   {p.text}
                 </h3>
               ) : (
-                <p key={idx} className="text-xs sm:text-sm leading-relaxed text-slate-700">
+                <p
+                  key={idx}
+                  className="text-xs sm:text-sm leading-relaxed text-slate-700"
+                >
                   {p.text}
                 </p>
               )

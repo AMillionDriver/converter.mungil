@@ -181,10 +181,15 @@ describe('DocumentConverter', () => {
 
   it('should convert PDF to DOCX, PDF to TXT, and DOCX to PDF with high text fidelity', async () => {
     // 1. Create a PDF
-    const txtContent = 'Bab 1: Pendahuluan Makalah.\nBab 2: Pembahasan dan Kesimpulan.';
-    const txtFile = new File([txtContent], 'makalah.txt', { type: 'text/plain' });
+    const txtContent =
+      'Bab 1: Pendahuluan Makalah.\nBab 2: Pembahasan dan Kesimpulan.';
+    const txtFile = new File([txtContent], 'makalah.txt', {
+      type: 'text/plain',
+    });
     const pdfBlob = await DocumentConverter.txtToPdf(txtFile);
-    const pdfFile = new File([pdfBlob], 'makalah.pdf', { type: 'application/pdf' });
+    const pdfFile = new File([pdfBlob], 'makalah.pdf', {
+      type: 'application/pdf',
+    });
 
     // 2. PDF -> TXT (High fidelity check)
     const extractedTxtBlob = await DocumentConverter.pdfToTxt(pdfFile);
@@ -219,9 +224,8 @@ describe('DocumentConverter', () => {
 
 describe('PdfPageEngine', () => {
   it('should reorder, rotate, and delete PDF pages', async () => {
-    const { PdfPageEngine } = await import(
-      '../engines/document/pdf-page-engine'
-    );
+    const { PdfPageEngine } =
+      await import('../engines/document/pdf-page-engine');
 
     // 1. Create a 3-page test PDF
     const pdfDoc = await PDFDocument.create();
@@ -229,9 +233,13 @@ describe('PdfPageEngine', () => {
     pdfDoc.addPage([300, 300]); // Page 2
     pdfDoc.addPage([400, 400]); // Page 3
     const pdfBytes = await pdfDoc.save();
-    const pdfFile = new File([pdfBytes as Uint8Array<ArrayBuffer>], 'test-3pages.pdf', {
-      type: 'application/pdf',
-    });
+    const pdfFile = new File(
+      [pdfBytes as Uint8Array<ArrayBuffer>],
+      'test-3pages.pdf',
+      {
+        type: 'application/pdf',
+      }
+    );
 
     // 2. Perform operations:
     // - Keep original page 3 (index 2), rotate 90 deg
@@ -257,9 +265,8 @@ describe('PdfPageEngine', () => {
   });
 
   it('should split PDF into multiple document ranges', async () => {
-    const { PdfPageEngine } = await import(
-      '../engines/document/pdf-page-engine'
-    );
+    const { PdfPageEngine } =
+      await import('../engines/document/pdf-page-engine');
 
     const pdfDoc = await PDFDocument.create();
     pdfDoc.addPage([100, 100]);
@@ -267,9 +274,13 @@ describe('PdfPageEngine', () => {
     pdfDoc.addPage([100, 100]);
     pdfDoc.addPage([100, 100]);
     const pdfBytes = await pdfDoc.save();
-    const pdfFile = new File([pdfBytes as Uint8Array<ArrayBuffer>], 'test-4pages.pdf', {
-      type: 'application/pdf',
-    });
+    const pdfFile = new File(
+      [pdfBytes as Uint8Array<ArrayBuffer>],
+      'test-4pages.pdf',
+      {
+        type: 'application/pdf',
+      }
+    );
 
     // Split into [Page 1-2] and [Page 3-4]
     const splitBlobs = await PdfPageEngine.splitPdf(pdfFile, [
@@ -287,16 +298,19 @@ describe('PdfPageEngine', () => {
   });
 
   it('should insert blank pages in requested position with rotation', async () => {
-    const { PdfPageEngine } = await import(
-      '../engines/document/pdf-page-engine'
-    );
+    const { PdfPageEngine } =
+      await import('../engines/document/pdf-page-engine');
 
     const pdfDoc = await PDFDocument.create();
     pdfDoc.addPage([500, 700]); // Page 1
     const pdfBytes = await pdfDoc.save();
-    const pdfFile = new File([pdfBytes as Uint8Array<ArrayBuffer>], 'test-1page.pdf', {
-      type: 'application/pdf',
-    });
+    const pdfFile = new File(
+      [pdfBytes as Uint8Array<ArrayBuffer>],
+      'test-1page.pdf',
+      {
+        type: 'application/pdf',
+      }
+    );
 
     // Insert blank page before Page 1, and blank page after Page 1
     const resultBlob = await PdfPageEngine.processPages(pdfFile, [
@@ -353,7 +367,9 @@ describe('PdfPageEngine', () => {
     const cols = Array.from({ length: 20 }, (_, i) => `Col_${i + 1}`);
     const rowVals = Array.from({ length: 20 }, (_, i) => `Val_${i + 1}_data`);
     const csvContent = `${cols.join(',')}\n${rowVals.join(',')}`;
-    const csvFile = new File([csvContent], 'wide_data.csv', { type: 'text/csv' });
+    const csvFile = new File([csvContent], 'wide_data.csv', {
+      type: 'text/csv',
+    });
 
     const docxBlob = await DocumentConverter.csvToDocx(csvFile);
     const fflate = await import('fflate');
@@ -374,7 +390,9 @@ describe('PdfPageEngine', () => {
   it('should convert CSV to native Excel (.XLSX) with frozen header and styles', async () => {
     const csvContent =
       'ID,Product,Price,Quantity\n101,Monitor 4K,4500000,5\n102,USB Cable,50000,120';
-    const csvFile = new File([csvContent], 'inventory.csv', { type: 'text/csv' });
+    const csvFile = new File([csvContent], 'inventory.csv', {
+      type: 'text/csv',
+    });
 
     const xlsxBlob = await DocumentConverter.csvToXlsx(csvFile);
     expect(xlsxBlob.type).toBe(
@@ -419,9 +437,8 @@ describe('PdfPageEngine', () => {
 
   describe('PdfTableExtractor & High-Fidelity Table Extraction', () => {
     it('should accurately detect and reconstruct tabular layouts from spatial tokens', async () => {
-      const { PdfTableExtractor } = await import(
-        '../engines/document/pdf-table-extractor'
-      );
+      const { PdfTableExtractor } =
+        await import('../engines/document/pdf-table-extractor');
 
       // Construct simulated tokens resembling a multi-column invoice table
       const simulatedTokens = [
@@ -443,7 +460,13 @@ describe('PdfPageEngine', () => {
         { str: '5.00', x: 300, y: 600, width: 22, height: 10 },
         { str: '5.00', x: 400, y: 600, width: 22, height: 10 },
         // Footer paragraph
-        { str: 'Thank you for your business!', x: 50, y: 550, width: 150, height: 10 },
+        {
+          str: 'Thank you for your business!',
+          x: 50,
+          y: 550,
+          width: 150,
+          height: 10,
+        },
       ];
 
       const blocks = PdfTableExtractor.analyzePageBlocks(simulatedTokens);
@@ -466,10 +489,13 @@ describe('PdfPageEngine', () => {
   describe('Document Engine - Cross-Format Bidirectional Matrix', () => {
     it('should convert PDF to XLSX with structured sheets', async () => {
       // 1. Create a structured PDF file
-      const csvData = 'SKU,Nama Barang,Harga,Stok\nA1,Laptop Asus,12000000,10\nB2,Mouse Wireless,150000,50';
+      const csvData =
+        'SKU,Nama Barang,Harga,Stok\nA1,Laptop Asus,12000000,10\nB2,Mouse Wireless,150000,50';
       const csvFile = new File([csvData], 'products.csv', { type: 'text/csv' });
       const pdfBlob = await DocumentConverter.csvToPdf(csvFile);
-      const pdfFile = new File([pdfBlob], 'products.pdf', { type: 'application/pdf' });
+      const pdfFile = new File([pdfBlob], 'products.pdf', {
+        type: 'application/pdf',
+      });
 
       // 2. Convert PDF -> XLSX
       const xlsxBlob = await DocumentConverter.pdfToXlsx(pdfFile);
@@ -479,7 +505,9 @@ describe('PdfPageEngine', () => {
       expect(xlsxBlob.size).toBeGreaterThan(500);
 
       const fflate = await import('fflate');
-      const unzipped = fflate.unzipSync(new Uint8Array(await xlsxBlob.arrayBuffer()));
+      const unzipped = fflate.unzipSync(
+        new Uint8Array(await xlsxBlob.arrayBuffer())
+      );
       expect(unzipped['xl/worksheets/sheet1.xml']).toBeDefined();
       expect(unzipped['xl/workbook.xml']).toBeDefined();
 
@@ -493,7 +521,9 @@ describe('PdfPageEngine', () => {
       // 1. Start from CSV -> XLSX to get a valid OpenXML spreadsheet
       const csvContent =
         'Department,Lead,Budget\nEngineering,Alex,50000\nMarketing,Diana,30000\nDesign,Chris,20000';
-      const csvFile = new File([csvContent], 'budget.csv', { type: 'text/csv' });
+      const csvFile = new File([csvContent], 'budget.csv', {
+        type: 'text/csv',
+      });
       const xlsxBlob = await DocumentConverter.csvToXlsx(csvFile);
       const xlsxFile = new File([xlsxBlob], 'budget.xlsx', {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -503,7 +533,9 @@ describe('PdfPageEngine', () => {
       const docxBlob = await DocumentConverter.xlsxToDocx(xlsxFile);
       expect(docxBlob.type).toContain('wordprocessingml.document');
 
-      const unzippedDocx = fflate.unzipSync(new Uint8Array(await docxBlob.arrayBuffer()));
+      const unzippedDocx = fflate.unzipSync(
+        new Uint8Array(await docxBlob.arrayBuffer())
+      );
       expect(unzippedDocx['word/document.xml']).toBeDefined();
       const docXml = fflate.strFromU8(unzippedDocx['word/document.xml']);
 
@@ -520,14 +552,19 @@ describe('PdfPageEngine', () => {
       const roundtripXlsxBlob = await DocumentConverter.docxToXlsx(docxFile);
       expect(roundtripXlsxBlob.type).toContain('spreadsheetml.sheet');
 
-      const unzippedXlsx = fflate.unzipSync(new Uint8Array(await roundtripXlsxBlob.arrayBuffer()));
-      const sheetXml = fflate.strFromU8(unzippedXlsx['xl/worksheets/sheet1.xml']);
+      const unzippedXlsx = fflate.unzipSync(
+        new Uint8Array(await roundtripXlsxBlob.arrayBuffer())
+      );
+      const sheetXml = fflate.strFromU8(
+        unzippedXlsx['xl/worksheets/sheet1.xml']
+      );
       expect(sheetXml).toContain('Engineering');
       expect(sheetXml).toContain('Marketing');
     });
 
     it('should convert XLSX to CSV and XLSX to PDF cleanly', async () => {
-      const csvData = 'Code,Item,Qty\nX1,Keyboard Mechanical,25\nY2,Webcam HD,12';
+      const csvData =
+        'Code,Item,Qty\nX1,Keyboard Mechanical,25\nY2,Webcam HD,12';
       const xlsxBlob = await DocumentConverter.csvToXlsx(
         new File([csvData], 'stock.csv', { type: 'text/csv' })
       );
@@ -590,14 +627,18 @@ describe('PdfPageEngine', () => {
         { media: mediaItems }
       );
 
-      const unzipped = fflate.unzipSync(new Uint8Array(await docxBlob.arrayBuffer()));
+      const unzipped = fflate.unzipSync(
+        new Uint8Array(await docxBlob.arrayBuffer())
+      );
 
       // Media folder entry
       expect(unzipped['word/media/image1.png']).toBeDefined();
       expect(unzipped['word/media/image1.png'].length).toBe(pngBytes.length);
 
       // Relationship entry
-      const relsXml = fflate.strFromU8(unzipped['word/_rels/document.xml.rels']);
+      const relsXml = fflate.strFromU8(
+        unzipped['word/_rels/document.xml.rels']
+      );
       expect(relsXml).toContain('Id="rIdImg1"');
       expect(relsXml).toContain('Target="media/image1.png"');
       expect(relsXml).toContain('/relationships/image');
@@ -609,4 +650,3 @@ describe('PdfPageEngine', () => {
     });
   });
 });
-

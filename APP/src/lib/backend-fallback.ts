@@ -77,13 +77,17 @@ export class BackendFallbackManager {
             'Ukuran file melebihi kapasitas maksimum payload server.'
           );
         }
-        throw new Error(`Server fallback gagal (HTTP ${response.status}: ${response.statusText})`);
+        throw new Error(
+          `Server fallback gagal (HTTP ${response.status}: ${response.statusText})`
+        );
       }
 
       return await response.blob();
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error('Permintaan konversi sisi-server melebihi batas waktu (timeout).');
+        throw new Error(
+          'Permintaan konversi sisi-server melebihi batas waktu (timeout).'
+        );
       }
       throw err;
     }
