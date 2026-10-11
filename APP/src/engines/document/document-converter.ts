@@ -39,9 +39,10 @@ export class DocumentConverter {
     const usableHeight = pageHeight - margin * 2;
     const maxLinesPerPage = Math.floor(usableHeight / lineHeight);
 
-    // Split text into wrapped lines
+    // Split text into wrapped lines with O(1) per-word measurement
     const rawLines = text.split(/\r?\n/);
     const wrappedLines: string[] = [];
+    const spaceWidth = font.widthOfTextAtSize(' ', fontSize);
 
     for (const rawLine of rawLines) {
       if (!rawLine) {
@@ -50,15 +51,27 @@ export class DocumentConverter {
       }
       const words = rawLine.split(' ');
       let currentLine = '';
+      let currentLineWidth = 0;
 
       for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const width = font.widthOfTextAtSize(testLine, fontSize);
-        if (width <= usableWidth) {
-          currentLine = testLine;
-        } else {
-          if (currentLine) wrappedLines.push(currentLine);
+        if (!word) {
+          if (currentLine) {
+            currentLine += ' ';
+            currentLineWidth += spaceWidth;
+          }
+          continue;
+        }
+        const wordWidth = font.widthOfTextAtSize(word, fontSize);
+        if (!currentLine) {
           currentLine = word;
+          currentLineWidth = wordWidth;
+        } else if (currentLineWidth + spaceWidth + wordWidth <= usableWidth) {
+          currentLine += ` ${word}`;
+          currentLineWidth += spaceWidth + wordWidth;
+        } else {
+          wrappedLines.push(currentLine);
+          currentLine = word;
+          currentLineWidth = wordWidth;
         }
       }
       if (currentLine) {
@@ -117,104 +130,135 @@ export class DocumentConverter {
     });
 
     const doc = await loadingTask.promise;
-    const pages: ExtractedPdfPage[] = [];
-    const textParts: string[] = [];
+    try {
+      const pages: ExtractedPdfPage[] = [];
+      const textParts: string[] = [];
 
-    for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-      const page = await doc.getPage(pageNum);
-      const content = await page.getTextContent();
-      const items: TextItemLike[] = [];
+      for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+        const page = await doc.getPage(pageNum);
+        try {
+          const content = await page.getTextContent();
+          const items: TextItemLike[] = [];
 
-      for (const it of content.items) {
-        if ('str' in it && typeof it.str === 'string' && it.str) {
-          items.push({
-            str: it.str,
-            transform: it.transform,
-            width: it.width,
-            height: it.height,
-          });
-        }
-      }
-
-      // Group into visual lines based on baseline Y
-      const visualLines: { y: number; height: number; items: TextItemLike[] }[] = [];
-      for (const item of items) {
-        const y = item.transform[5];
-        const h = Math.abs(item.height) || 10;
-        let line = visualLines.find(
-          (l) => Math.abs(l.y - y) <= Math.max(l.height, h) * 0.4
-        );
-        if (!line) {
-          line = { y, height: h, items: [] };
-          visualLines.push(line);
-        }
-        line.items.push(item);
-      }
-
-      // Sort lines from top to bottom (Y descending in PDF coordinate system)
-      visualLines.sort((a, b) => b.y - a.y);
-
-      const pageLines: string[] = [];
-      let lastY: number | null = null;
-      let lastH = 12;
-
-      for (const line of visualLines) {
-        // Sort tokens on this line from left to right (X ascending)
-        line.items.sort((a, b) => a.transform[4] - b.transform[4]);
-
-        let lineText = '';
-        let lastXEnd: number | null = null;
-
-        for (const item of line.items) {
-          const x = item.transform[4];
-          if (
-            lastXEnd !== null &&
-            x - lastXEnd > 2 &&
-            !lineText.endsWith(' ') &&
-            !item.str.startsWith(' ')
-          ) {
-            lineText += ' ';
-          }
-          lineText += item.str;
-          lastXEnd = x + (item.width || 0);
-        }
-
-        const trimmed = lineText.trim();
-        if (trimmed) {
-          if (lastY !== null) {
-            const drop = lastY - line.y;
-            if (drop > lastH * 1.8) {
-              pageLines.push('');
+          for (const it of content.items) {
+            if ('str' in it && typeof it.str === 'string' && it.str) {
+              items.push({
+                str: it.str,
+                transform: it.transform,
+                width: it.width,
+                height: it.height,
+              });
             }
           }
-          pageLines.push(trimmed);
-          lastY = line.y;
-          lastH = line.height;
+
+          // Group into visual lines based on baseline Y
+          // Fast spatial locality check: check last added line & recent lines before fallback
+          const visualLines: { y: number; height: number; items: TextItemLike[] }[] = [];
+          for (const item of items) {
+            const y = item.transform[5];
+            const h = Math.abs(item.height) || 10;
+            const lastLine = visualLines[visualLines.length - 1];
+            if (
+              lastLine &&
+              Math.abs(lastLine.y - y) <= Math.max(lastLine.height, h) * 0.4
+            ) {
+              lastLine.items.push(item);
+              continue;
+            }
+
+            let matched = false;
+            const lookback = Math.max(0, visualLines.length - 10);
+            for (let i = visualLines.length - 2; i >= lookback; i--) {
+              const line = visualLines[i];
+              if (Math.abs(line.y - y) <= Math.max(line.height, h) * 0.4) {
+                line.items.push(item);
+                matched = true;
+                break;
+              }
+            }
+            if (matched) continue;
+
+            let line = visualLines.find(
+              (l) => Math.abs(l.y - y) <= Math.max(l.height, h) * 0.4
+            );
+            if (!line) {
+              line = { y, height: h, items: [] };
+              visualLines.push(line);
+            }
+            line.items.push(item);
+          }
+
+          // Sort lines from top to bottom (Y descending in PDF coordinate system)
+          visualLines.sort((a, b) => b.y - a.y);
+
+          const pageLines: string[] = [];
+          let lastY: number | null = null;
+          let lastH = 12;
+
+          for (const line of visualLines) {
+            // Sort tokens on this line from left to right (X ascending)
+            line.items.sort((a, b) => a.transform[4] - b.transform[4]);
+
+            let lineText = '';
+            let lastXEnd: number | null = null;
+
+            for (const item of line.items) {
+              const x = item.transform[4];
+              if (
+                lastXEnd !== null &&
+                x - lastXEnd > 2 &&
+                !lineText.endsWith(' ') &&
+                !item.str.startsWith(' ')
+              ) {
+                lineText += ' ';
+              }
+              lineText += item.str;
+              lastXEnd = x + (item.width || 0);
+            }
+
+            const trimmed = lineText.trim();
+            if (trimmed) {
+              if (lastY !== null) {
+                const drop = lastY - line.y;
+                if (drop > lastH * 1.8) {
+                  pageLines.push('');
+                }
+              }
+              pageLines.push(trimmed);
+              lastY = line.y;
+              lastH = line.height;
+            }
+          }
+
+          pages.push({
+            pageNumber: pageNum,
+            lines: pageLines,
+          });
+
+          textParts.push(`--- Halaman ${pageNum} ---`);
+          if (pageLines.length > 0) {
+            textParts.push(pageLines.join('\n'));
+          }
+        } finally {
+          page.cleanup();
         }
       }
 
-      pages.push({
-        pageNumber: pageNum,
-        lines: pageLines,
-      });
-
-      textParts.push(`--- Halaman ${pageNum} ---`);
-      if (pageLines.length > 0) {
-        textParts.push(pageLines.join('\n'));
+      const totalLines = pages.reduce((acc, p) => acc + p.lines.length, 0);
+      if (totalLines === 0) {
+        textParts.push(
+          `[Informasi]\nDokumen PDF memiliki ${doc.numPages} halaman.\nTeks tidak terdeteksi (kemungkinan dokumen berupa gambar hasil scan).`
+        );
       }
-    }
 
-    const totalLines = pages.reduce((acc, p) => acc + p.lines.length, 0);
-    if (totalLines === 0) {
-      textParts.push(
-        `[Informasi]\nDokumen PDF memiliki ${doc.numPages} halaman.\nTeks tidak terdeteksi (kemungkinan dokumen berupa gambar hasil scan).`
-      );
+      return {
+        fullText: textParts.join('\n\n'),
+        pages,
+      };
+    } finally {
+      doc.cleanup?.();
+      loadingTask.destroy?.();
     }
-
-    return {
-      fullText: textParts.join('\n\n'),
-      pages,
-    };
   }
 
   /**

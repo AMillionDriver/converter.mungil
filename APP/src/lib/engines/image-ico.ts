@@ -22,7 +22,9 @@ export async function runConversion(
   onProgress?.(10);
 
   try {
-    const bitmap = await createImageBitmap(file);
+    const bitmap = await createImageBitmap(file, {
+      colorSpaceConversion: 'none',
+    });
     onProgress?.(30);
 
     // Target icon dimensions (default: 32x32, or user requested up to 256)

@@ -6,10 +6,12 @@ export const engineId = 'image:png:jpeg';
 export const supportedConversions = ['png', 'webp', 'jpg', 'jpeg'];
 
 async function decodeImage(file: File): Promise<ImageData> {
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await createImageBitmap(file, {
+    colorSpaceConversion: 'none',
+  });
   try {
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
       throw new Error('Failed to get 2D context');
     }

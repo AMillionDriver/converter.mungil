@@ -153,7 +153,7 @@ async function decodeSource(file: File): Promise<ImageData> {
   });
   try {
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new Error('OffscreenCanvas 2D context unavailable');
     ctx.drawImage(bitmap, 0, 0);
     return ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -172,7 +172,10 @@ async function encodeViaJsquash(
   options: ImageConvertOptions
 ): Promise<ArrayBuffer> {
   const quality = options.quality ?? 0.85;
-  return codec.encode(source, { quality: Math.round(quality * 100) });
+  return codec.encode(source, {
+    quality: Math.round(quality * 100),
+    method: 4,
+  });
 }
 
 // ---------------------------------------------------------------------------

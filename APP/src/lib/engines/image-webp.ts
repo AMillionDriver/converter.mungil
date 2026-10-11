@@ -9,10 +9,12 @@ export const engineId = 'image:png:webp';
 export const supportedConversions = ['png', 'jpg', 'jpeg', 'webp'];
 
 async function decodeImage(file: File): Promise<ImageData> {
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await createImageBitmap(file, {
+    colorSpaceConversion: 'none',
+  });
   try {
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
       throw new Error('Failed to get 2D context');
     }
@@ -42,12 +44,14 @@ export async function runConversion(
     const decodedImage = await decodeImage(file);
     onProgress?.(60);
 
-    // Encode to WebP with configurable quality
+    // Encode to WebP with configurable quality and optimized compression effort
+    // method 4 provides virtually identical PSNR to method 6 while being 3x-5x faster
     const quality = (options.quality as number) ?? 85;
+    const method = (options.method as number) ?? 4;
     const encodeOptions = {
       quality: Math.max(1, Math.min(100, quality)),
       lossless: options.lossless ? 1 : 0,
-      method: 6,
+      method: Math.max(0, Math.min(6, method)),
     };
 
     const webpOutput = await encode(decodedImage, encodeOptions);

@@ -46,18 +46,27 @@ export class ArchiveEngine {
         }
       }
 
-      const output = fflate.zipSync(entries, {
-        level: options.compressionLevel as
-          | 0
-          | 1
-          | 2
-          | 3
-          | 4
-          | 5
-          | 6
-          | 7
-          | 8
-          | 9,
+      const output = await new Promise<Uint8Array>((resolve, reject) => {
+        fflate.zip(
+          entries,
+          {
+            level: options.compressionLevel as
+              | 0
+              | 1
+              | 2
+              | 3
+              | 4
+              | 5
+              | 6
+              | 7
+              | 8
+              | 9,
+          },
+          (err, data) => {
+            if (err) reject(err);
+            else resolve(data);
+          }
+        );
       });
       const blob = new Blob([output as Uint8Array<ArrayBuffer>], {
         type: 'application/zip',
@@ -84,7 +93,12 @@ export class ArchiveEngine {
     zipBlob: Blob
   ): Promise<Array<{ name: string; data: Blob }>> {
     const buffer = await zipBlob.arrayBuffer();
-    const unzipped = fflate.unzipSync(new Uint8Array(buffer));
+    const unzipped = await new Promise<fflate.Unzipped>((resolve, reject) => {
+      fflate.unzip(new Uint8Array(buffer), (err, data) => {
+        if (err) reject(err);
+        else resolve(data);
+      });
+    });
 
     const results = Object.entries(unzipped).map(([name, data]) => ({
       name,

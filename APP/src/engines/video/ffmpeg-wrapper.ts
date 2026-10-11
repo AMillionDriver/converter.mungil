@@ -89,17 +89,17 @@ export class FFmpegEngine {
       EngineLogger.error('ffmpeg-wasm', 'Conversion failed', error);
       throw error;
     } finally {
-      // Cleanup MEMFS
-      (
-        this.ffmpeg as unknown as {
-          FS: (cmd: string, ...args: unknown[]) => void;
-        }
-      ).FS('unlink', inputName);
-      (
-        this.ffmpeg as unknown as {
-          FS: (cmd: string, ...args: unknown[]) => void;
-        }
-      ).FS('unlink', outputName);
+      // Cleanup MEMFS safely
+      try {
+        await this.ffmpeg.deleteFile(inputName);
+      } catch {
+        // file may already be removed or not created
+      }
+      try {
+        await this.ffmpeg.deleteFile(outputName);
+      } catch {
+        // file may already be removed or not created
+      }
     }
   }
 }

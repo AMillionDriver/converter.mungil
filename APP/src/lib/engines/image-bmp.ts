@@ -22,13 +22,15 @@ export async function runConversion(
   onProgress?.(10);
 
   try {
-    const bitmap = await createImageBitmap(file);
+    const bitmap = await createImageBitmap(file, {
+      colorSpaceConversion: 'none',
+    });
     onProgress?.(30);
 
     const width = bitmap.width;
     const height = bitmap.height;
     const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new Error('OffscreenCanvas 2D context unavailable');
 
     ctx.drawImage(bitmap, 0, 0);
