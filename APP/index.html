@@ -100,9 +100,351 @@
       defer
       src="https://challenges.cloudflare.com/turnstile/v0/api.js"
     ></script>
+
+    <!-- Inline Pre-Hydration Skeleton Styles (0ms First Contentful Paint) -->
+    <style id="initial-skeleton-styles">
+      :root {
+        --sk-bg: #f8fafc;
+        --sk-card: #ffffff;
+        --sk-border: #e2e8f0;
+        --sk-base: #e2e8f0;
+        --sk-highlight: #f8fafc;
+        --sk-primary: #4f46e5;
+      }
+      body {
+        margin: 0;
+        background-color: var(--sk-bg);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: #1e293b;
+        -webkit-font-smoothing: antialiased;
+      }
+      .sk-container {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+      .sk-shimmer {
+        background: linear-gradient(
+          90deg,
+          #e2e8f0 0%,
+          #f1f5f9 50%,
+          #e2e8f0 100%
+        );
+        background-size: 200% 100%;
+        animation: sk-shimmer-wave 1.6s ease-in-out infinite;
+      }
+      @keyframes sk-shimmer-wave {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      .sk-header {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        height: 64px;
+        background: rgba(255, 255, 255, 0.95);
+        border-bottom: 1px solid var(--sk-border);
+        box-sizing: border-box;
+      }
+      .sk-header-inner {
+        max-width: 1280px;
+        margin: 0 auto;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        box-sizing: border-box;
+      }
+      .sk-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .sk-brand-logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+      }
+      .sk-brand-name {
+        width: 130px;
+        height: 20px;
+        border-radius: 6px;
+      }
+      .sk-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .sk-nav-link {
+        width: 72px;
+        height: 18px;
+        border-radius: 6px;
+        display: none;
+      }
+      @media (min-width: 768px) {
+        .sk-nav-link { display: block; }
+      }
+      .sk-btn-pill {
+        width: 90px;
+        height: 36px;
+        border-radius: 9999px;
+      }
+      .sk-main {
+        max-width: 1280px;
+        margin: 0 auto;
+        width: 100%;
+        padding: 32px 16px;
+        box-sizing: border-box;
+        flex: 1;
+      }
+      .sk-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+      @media (min-width: 1024px) {
+        .sk-grid {
+          grid-template-columns: 280px 1fr 280px;
+        }
+      }
+      .sk-aside {
+        display: none;
+      }
+      @media (min-width: 1024px) {
+        .sk-aside {
+          display: block;
+        }
+      }
+      .sk-aside-card {
+        height: 520px;
+        border-radius: 16px;
+        border: 1px dashed var(--sk-border);
+        background: #ffffff;
+      }
+      .sk-center {
+        max-width: 768px;
+        margin: 0 auto;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .sk-hero-badge {
+        width: 140px;
+        height: 22px;
+        border-radius: 9999px;
+        margin-bottom: 12px;
+      }
+      .sk-hero-title {
+        width: 80%;
+        max-width: 440px;
+        height: 32px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+      }
+      .sk-hero-sub {
+        width: 60%;
+        max-width: 320px;
+        height: 16px;
+        border-radius: 6px;
+        margin-bottom: 24px;
+      }
+      .sk-dropzone {
+        background: #ffffff;
+        border: 2px dashed #cbd5e1;
+        border-radius: 20px;
+        padding: 48px 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        box-sizing: border-box;
+      }
+      .sk-upload-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        margin-bottom: 20px;
+      }
+      .sk-dz-title {
+        width: 220px;
+        height: 20px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+      }
+      .sk-dz-sub {
+        width: 300px;
+        max-width: 90%;
+        height: 14px;
+        border-radius: 6px;
+        margin-bottom: 24px;
+      }
+      .sk-dz-btn {
+        width: 160px;
+        height: 44px;
+        border-radius: 12px;
+        margin-bottom: 28px;
+      }
+      .sk-progress-wrap {
+        width: 100%;
+        max-width: 360px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      .sk-progress-track {
+        width: 100%;
+        height: 4px;
+        background: #e2e8f0;
+        border-radius: 9999px;
+        overflow: hidden;
+        position: relative;
+      }
+      .sk-progress-bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 40%;
+        background: var(--sk-primary);
+        border-radius: 9999px;
+        animation: sk-progress-anim 1.8s ease-in-out infinite;
+      }
+      @keyframes sk-progress-anim {
+        0% { left: -40%; width: 30%; }
+        50% { left: 30%; width: 50%; }
+        100% { left: 100%; width: 30%; }
+      }
+      .sk-status-text {
+        font-size: 11px;
+        color: #64748b;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+      }
+      .sk-footer {
+        background: #f8fafc;
+        border-top: 1px solid var(--sk-border);
+        padding: 40px 16px;
+        margin-top: 48px;
+        box-sizing: border-box;
+      }
+      .sk-footer-inner {
+        max-width: 1280px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+      }
+      @media (min-width: 768px) {
+        .sk-footer-inner {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+      .sk-footer-col {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .sk-f-title {
+        width: 90px;
+        height: 16px;
+        border-radius: 4px;
+        margin-bottom: 6px;
+      }
+      .sk-f-item {
+        width: 120px;
+        max-width: 80%;
+        height: 12px;
+        border-radius: 4px;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="sk-container" aria-busy="true" aria-label="Memuat aplikasi Mungil Converter...">
+        <!-- Header -->
+        <header class="sk-header">
+          <div class="sk-header-inner">
+            <div class="sk-brand">
+              <div class="sk-shimmer sk-brand-logo"></div>
+              <div class="sk-shimmer sk-brand-name"></div>
+            </div>
+            <div class="sk-header-actions">
+              <div class="sk-shimmer sk-nav-link"></div>
+              <div class="sk-shimmer sk-nav-link"></div>
+              <div class="sk-shimmer sk-btn-pill"></div>
+            </div>
+          </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="sk-main">
+          <div class="sk-grid">
+            <!-- Left Side / Ad Placeholder -->
+            <aside class="sk-aside" aria-hidden="true">
+              <div class="sk-shimmer sk-aside-card"></div>
+            </aside>
+
+            <!-- Center Column -->
+            <section class="sk-center">
+              <div class="sk-shimmer sk-hero-badge"></div>
+              <div class="sk-shimmer sk-hero-title"></div>
+              <div class="sk-shimmer sk-hero-sub"></div>
+
+              <!-- Dropzone Card -->
+              <div class="sk-dropzone">
+                <div class="sk-shimmer sk-upload-icon"></div>
+                <div class="sk-shimmer sk-dz-title"></div>
+                <div class="sk-shimmer sk-dz-sub"></div>
+                <div class="sk-shimmer sk-dz-btn"></div>
+
+                <!-- Progress Loading Indicator -->
+                <div class="sk-progress-wrap">
+                  <div class="sk-progress-track">
+                    <div class="sk-progress-bar"></div>
+                  </div>
+                  <span class="sk-status-text">Memuat modul Mungil Converter &bull; 100% Client-Side Privacy</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- Right Side / Ad Placeholder -->
+            <aside class="sk-aside" aria-hidden="true">
+              <div class="sk-shimmer sk-aside-card"></div>
+            </aside>
+          </div>
+        </main>
+
+        <!-- Fat Footer -->
+        <footer class="sk-footer" aria-hidden="true">
+          <div class="sk-footer-inner">
+            <div class="sk-footer-col">
+              <div class="sk-shimmer sk-f-title"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+            </div>
+            <div class="sk-footer-col">
+              <div class="sk-shimmer sk-f-title"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+            </div>
+            <div class="sk-footer-col">
+              <div class="sk-shimmer sk-f-title"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+            </div>
+            <div class="sk-footer-col">
+              <div class="sk-shimmer sk-f-title"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+              <div class="sk-shimmer sk-f-item"></div>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
