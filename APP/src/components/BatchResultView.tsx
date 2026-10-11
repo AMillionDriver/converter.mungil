@@ -40,10 +40,12 @@ export function BatchResultView({
         name: r.filename,
         blob: r.blob,
       }));
-      await DownloadManager.downloadZip(
-        zipEntries,
-        `flowy-converted-${Date.now()}.zip`
-      );
+      const zipFilename =
+        results.length === 1
+          ? `${results[0].filename.replace(/\.[^/.]+$/, '')}.zip`
+          : `mungil-batch-${Date.now()}.zip`;
+
+      await DownloadManager.downloadZip(zipEntries, zipFilename);
     } catch (err) {
       alert(
         `Gagal membuat file ZIP: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -111,6 +113,11 @@ export function BatchResultView({
             type="button"
             disabled={isZipping}
             onClick={handleDownloadAllZip}
+            title={
+              results.length > 1
+                ? 'Unduh semua berkas dalam format arsip .ZIP'
+                : 'Simpan berkas hasil konversi sebagai arsip .ZIP'
+            }
             className="w-full sm:w-auto text-center justify-center inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition active:scale-95 disabled:bg-slate-400 disabled:cursor-not-allowed truncate"
           >
             <svg
@@ -127,7 +134,16 @@ export function BatchResultView({
               />
             </svg>
             <span className="truncate">
-              {isZipping ? 'Mengemas ZIP...' : 'Unduh Semua (.ZIP)'}
+              {isZipping ? (
+                'Mengemas ZIP...'
+              ) : results.length > 1 ? (
+                'Unduh Semua (.ZIP)'
+              ) : (
+                <>
+                  <span className="hidden sm:inline">Simpan sebagai .ZIP</span>
+                  <span className="sm:hidden">Simpan .ZIP</span>
+                </>
+              )}
             </span>
           </button>
         </div>
@@ -235,7 +251,9 @@ export function BatchResultView({
           onClick={handleDownloadAllZip}
           className="text-indigo-600 font-semibold hover:underline"
         >
-          Unduh Semua Arsip (.zip)
+          {results.length > 1
+            ? 'Unduh Semua Arsip (.zip)'
+            : 'Simpan sebagai Arsip (.zip)'}
         </button>
       </div>
     </div>
