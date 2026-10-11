@@ -60,18 +60,33 @@ class ForgeDownloadTask {
 
   private async execute(): Promise<void> {
     try {
-      // 1. Download and Cache Script
-      await this.downloadAndCache(this.metadata.script);
-      this.onProgress?.(30);
+      const isBuiltinScript =
+        !this.metadata.script ||
+        this.metadata.script === 'builtin' ||
+        this.metadata.script === 'local';
 
-      // 2. Download and Cache WASM
-      if (this.metadata.wasm) {
+      // 1. Download and Cache Script (only if external remote script)
+      if (!isBuiltinScript) {
+        await this.downloadAndCache(this.metadata.script);
+        this.onProgress?.(30);
+      } else {
+        this.onProgress?.(50);
+      }
+
+      // 2. Download and Cache WASM (only if external remote WASM asset)
+      if (
+        this.metadata.wasm &&
+        this.metadata.wasm !== 'builtin' &&
+        this.metadata.wasm !== 'local'
+      ) {
         await this.downloadAndCache(this.metadata.wasm);
       }
-      this.onProgress?.(70);
+      this.onProgress?.(80);
 
-      // 3. Verify Integrity
-      await this.verify();
+      // 3. Verify Integrity (only for remote external scripts)
+      if (!isBuiltinScript) {
+        await this.verify();
+      }
       this.onProgress?.(100);
 
       // 4. Mark as installed in IndexedDB
