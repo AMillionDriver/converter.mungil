@@ -4,11 +4,24 @@
 node_modules/
 **/node_modules/
 
-# Production Build Outputs
+# Production & Build Outputs
 dist/
 **/dist/
 dist-ssr/
 *.local
+.turbo/
+
+# Vite & Tool Caches
+.vite/
+**/.vite/
+.eslintcache/
+.eslintcache
+
+# Vitest & Coverage
+coverage/
+**/coverage/
+*.lcov
+.vitest/
 
 # Environment Variables & Secrets (CRITICAL)
 .env
@@ -18,16 +31,23 @@ dist-ssr/
 **/.env.*
 !**/.env.example
 
-# IDE & Editor files
+# IDE, AI & Editor files
 .vscode/
 .idea/
 .claude/
 .mimocode/
+.gemini/
+.cursor/
+.windsurf/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Cloudflare & Vercel Artifacts
+.vercel/
+.wrangler/
 
 # OS Generated files
 .DS_Store
@@ -37,6 +57,7 @@ dist-ssr/
 .Trashes
 ehthumbs.db
 Thumbs.db
+desktop.ini
 
 # Logs & Temporary files
 *.log

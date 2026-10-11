@@ -7,6 +7,16 @@ dist/
 dist-ssr/
 server/dist/
 *.local
+.turbo/
+
+# Vite & Tool Caches
+.vite/
+.eslintcache
+
+# Coverage
+coverage/
+*.lcov
+.vitest/
 
 # Environment Variables (Secrets)
 .env
@@ -21,13 +31,21 @@ server/secret/.env
 .vscode/
 .idea/
 .claude/
+.gemini/
+.cursor/
+.windsurf/
 .DS_Store
 Thumbs.db
+desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Cloudflare & Vercel Artifacts
+.vercel/
+.wrangler/
 
 # Temporary and Log files
 tmp/
