@@ -36,7 +36,7 @@ jobs:
 
       - name: Create GitHub Release with Changelog
         uses: softprops/action-gh-release@v2
-        if: ${{ steps.tag_version.outputs.new_tag }}
+        if: steps.tag_version.outputs.new_tag != ''
         with:
           tag_name: ${{ steps.tag_version.outputs.new_tag }}
           name: Release ${{ steps.tag_version.outputs.new_tag }}
@@ -56,10 +56,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: APP/package-lock.json
 
@@ -71,12 +71,15 @@ jobs:
 
       - name: Check Cloudflare Deployment Credentials
         id: check_credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
-            echo "::warning ::Cloudflare Secrets (CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID) are missing. Skipping direct upload."
-            echo "has_secrets=false" >> $GITHUB_OUTPUT
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT_ID" ]; then
+            echo "::warning::Cloudflare Secrets (CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID) are missing. Skipping direct upload."
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
           else
-            echo "has_secrets=true" >> $GITHUB_OUTPUT
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Deploy to Cloudflare Pages via Wrangler
@@ -86,4 +89,5 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=converter-mungil --branch=main
-        working-directory: APP
+          workingDirectory: APP
+
