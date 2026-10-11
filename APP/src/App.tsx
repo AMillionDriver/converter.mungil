@@ -753,16 +753,32 @@ function Dropzone({
       <input
         type="file"
         multiple
+        accept="*/*"
         ref={fileInputRef}
         className="hidden"
-        onChange={(e) => handleFiles(e.target.files)}
+        onClick={(e) => {
+          (e.currentTarget as HTMLInputElement).value = '';
+        }}
+        onChange={(e) => {
+          const files = e.target.files;
+          e.currentTarget.value = '';
+          handleFiles(files);
+        }}
       />
       <input
         type="file"
         multiple
+        accept="*/*"
         ref={addMoreInputRef}
         className="hidden"
-        onChange={(e) => handleFiles(e.target.files, true)}
+        onClick={(e) => {
+          (e.currentTarget as HTMLInputElement).value = '';
+        }}
+        onChange={(e) => {
+          const files = e.target.files;
+          e.currentTarget.value = '';
+          handleFiles(files, true);
+        }}
       />
 
       {batchResults && batchResults.length > 0 ? (
