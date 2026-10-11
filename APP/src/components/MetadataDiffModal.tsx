@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { MetadataDiffItem } from '../engines/image/exif-engine';
 
 interface MetadataDiffModalProps {
@@ -14,6 +15,7 @@ export function MetadataDiffModal({
   onConfirm,
   onCancel,
 }: MetadataDiffModalProps) {
+  const { t } = useTranslation();
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
@@ -41,11 +43,10 @@ export function MetadataDiffModal({
               id="diff-modal-title"
               className="text-lg font-bold tracking-tight text-slate-900"
             >
-              Konfirmasi Perubahan Metadata
+              {t('diffModal.title')}
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              Data metadata berikut telah dimodifikasi atau dibersihkan dari
-              file asli.
+              {t('diffModal.desc')}
             </p>
           </div>
           <button
@@ -74,13 +75,13 @@ export function MetadataDiffModal({
             <thead className="bg-slate-100/75 text-[11px] font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-200">
               <tr>
                 <th scope="col" className="px-3.5 py-2.5">
-                  Properti
+                  {t('diffModal.field')}
                 </th>
                 <th scope="col" className="px-3.5 py-2.5">
-                  Sebelum
+                  {t('diffModal.before')}
                 </th>
                 <th scope="col" className="px-3.5 py-2.5">
-                  Sesudah
+                  {t('diffModal.after')}
                 </th>
               </tr>
             </thead>
@@ -136,14 +137,14 @@ export function MetadataDiffModal({
             onClick={onCancel}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-95"
           >
-            Batal & Edit Lagi
+            {t('diffModal.cancel')}
           </button>
           <button
             type="button"
             onClick={onConfirm}
             className="rounded-lg bg-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700 active:scale-95"
           >
-            Lanjut Konversi
+            {t('diffModal.confirm')}
           </button>
         </div>
       </div>

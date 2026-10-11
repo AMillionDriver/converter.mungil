@@ -14,6 +14,8 @@ import { PdfPageManagerModal } from './components/PdfPageManagerModal';
 import { SupportModal } from './components/SupportModal';
 import { ProfileModal } from './components/ProfileModal';
 import { TurnstileWidget } from './components/TurnstileWidget';
+import { LanguageSelector } from './components/LanguageSelector';
+import { useTranslation } from 'react-i18next';
 import {
   BatchResultView,
   type ConvertedBatchItem,
@@ -143,6 +145,7 @@ function Dropzone({
   onInterceptDiff,
   onOpenMetadata,
 }: DropzoneProps) {
+  const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [thumbLoadError, setThumbLoadError] = useState(false);
@@ -789,11 +792,10 @@ function Dropzone({
                 isBusy ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600'
               }`}
             >
-              {isBusy ? 'Memproses...' : 'Pilih File'}
+              {isBusy ? t('dropzone.converting') : t('dropzone.browse')}
             </button>
             <p className="mt-3 text-sm text-slate-500">
-              atau seret dan lepas file di sini (mendukung banyak file
-              sekaligus)
+              {t('dropzone.dragPrompt')} {t('dropzone.limitsNotice')}
             </p>
           </div>
         </div>
@@ -1321,7 +1323,7 @@ function Dropzone({
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <div className="flex items-center gap-2">
                   <label className="text-sm font-medium text-slate-700">
-                    Konversi ke:
+                    {t('dropzone.convertTo')}
                   </label>
                   <select
                     disabled={keepCurrent}
@@ -1504,7 +1506,7 @@ function Dropzone({
                           : activeDocMetadata?.rowCount !== undefined &&
                               uploadedFiles[0]?.name.toLowerCase().endsWith('.csv')
                             ? `Konversi ${activeDocMetadata.rowCount.toLocaleString()} Baris ke ${selectedFormat.toUpperCase()}`
-                            : 'Konversi Sekarang'}
+                            : t('dropzone.convertBtn')}
             </button>
           </div>
         </div>
@@ -1547,6 +1549,7 @@ function Dropzone({
 }
 
 function Footer() {
+  const { t } = useTranslation();
   const [openSection, setOpenSection] = useState<string | null>(null);
 
   const toggleSection = (category: string) => {
@@ -1711,8 +1714,7 @@ function Footer() {
 
         <div className="mt-8 text-center">
           <p className="text-xs text-slate-400">
-            &copy; {new Date().getFullYear()} Mungil Converter. All rights
-            reserved.
+            &copy; {new Date().getFullYear()} Mungil Converter. {t('footer.copyright')}
           </p>
         </div>
       </div>
@@ -1721,6 +1723,8 @@ function Footer() {
 }
 
 function App() {
+  const { t } = useTranslation();
+  const [isLanguageChanging, setIsLanguageChanging] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [activeMetadata, setActiveMetadata] = useState<ExifResult | null>(null);
@@ -1951,6 +1955,13 @@ function App() {
     }
   };
 
+  const handleLanguageChangeStart = () => {
+    setIsLanguageChanging(true);
+    setTimeout(() => {
+      setIsLanguageChanging(false);
+    }, 240);
+  };
+
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen((currentState) => !currentState);
   };
@@ -1974,7 +1985,7 @@ function App() {
                 src="/asset/icon_mungil.svg"
               />
               <span className="text-base font-bold tracking-tight text-slate-900">
-                Mungil Converter
+                {t('nav.brand')}
               </span>
             </a>
 
@@ -1989,23 +2000,24 @@ function App() {
             >
               <span className="max-w-36 truncate">mungil.my.id</span>
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
-                Free
+                {t('nav.freePlan')}
               </span>
               <Icon name="chevronDown" />
             </button>
 
-            <div className="hidden items-center gap-1 md:flex">
+            <div className="hidden items-center gap-2 md:flex">
+              <LanguageSelector onLanguageChangeStart={handleLanguageChangeStart} />
               <button
                 type="button"
                 onClick={() => setIsSupportModalOpen(true)}
                 className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 cursor-pointer"
               >
                 <Icon name="message" />
-                Support
+                {t('nav.support')}
               </button>
               <button
                 type="button"
-                aria-label="Buka profil & alokasi memori"
+                aria-label={t('nav.profile')}
                 onClick={() => {
                   setProfileDefaultTab('specs');
                   setIsProfileModalOpen(true);
@@ -2020,7 +2032,7 @@ function App() {
               aria-controls="mobile-navigation"
               aria-expanded={isMobileMenuOpen}
               aria-label={
-                isMobileMenuOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'
+                isMobileMenuOpen ? t('nav.closeMenu') : t('nav.openMenu')
               }
               className="inline-grid size-10 place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 md:hidden"
               onClick={toggleMobileMenu}
@@ -2047,10 +2059,19 @@ function App() {
                   mungil.my.id
                 </span>
                 <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
-                  Free
+                  {t('nav.freePlan')}
                 </span>
               </div>
               <div className="mt-2 grid gap-1">
+                <div className="px-1 py-1 border-b border-slate-200/80 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                    Bahasa / Language
+                  </span>
+                  <LanguageSelector
+                    isMobileInline={true}
+                    onLanguageChangeStart={handleLanguageChangeStart}
+                  />
+                </div>
                 <button
                   type="button"
                   className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 text-left cursor-pointer"
@@ -2060,7 +2081,7 @@ function App() {
                   }}
                 >
                   <Icon name="message" />
-                  Support & Bantuan
+                  {t('nav.support')}
                 </button>
                 <button
                   type="button"
@@ -2072,7 +2093,7 @@ function App() {
                   }}
                 >
                   <Icon name="user" />
-                  Profil & Memori
+                  {t('nav.profile')}
                 </button>
               </div>
             </div>
@@ -2081,7 +2102,9 @@ function App() {
       </header>
 
       <main
-        className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-16"
+        className={`mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-16 ${
+          isLanguageChanging ? 'animate-lang-shimmer' : ''
+        }`}
         id="beranda"
       >
         <div className="w-full">
@@ -2207,7 +2230,7 @@ function App() {
                 className="mb-4 sm:mb-6 text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900"
                 id="tool-title"
               >
-                Konversikan file dengan mudah
+                {t('hero.title')}
               </h1>
 
               {/* Dropzone */}

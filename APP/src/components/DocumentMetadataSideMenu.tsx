@@ -1,4 +1,5 @@
 import type { ChangeEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DocumentMetadata } from '../engines/document/document-metadata-engine';
 
 interface DocumentMetadataSideMenuProps {
@@ -26,6 +27,7 @@ export function DocumentMetadataSideMenu({
   hasChanges,
   fileInfo,
 }: DocumentMetadataSideMenuProps) {
+  const { t } = useTranslation();
   const getDateTimeLocalValue = (val: string | Date | undefined): string => {
     if (!val) return '';
     const d = val instanceof Date ? val : new Date(val);
@@ -62,12 +64,12 @@ export function DocumentMetadataSideMenu({
             <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
           </svg>
           <h2 className="text-sm font-bold tracking-tight text-slate-900">
-            Metadata Dokumen
+            {t('docMeta.title')}
           </h2>
         </div>
         {hasChanges && (
           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 border border-amber-200">
-            Ada Perubahan
+            {t('docMeta.hasChanges')}
           </span>
         )}
       </div>
@@ -75,7 +77,7 @@ export function DocumentMetadataSideMenu({
       {/* 1. Ringkasan File Dokumen */}
       <div className="space-y-1.5 text-xs">
         <span className="font-semibold uppercase tracking-wider text-slate-400 text-[10px]">
-          Informasi Berkas
+          {t('docMeta.fileInfo')}
         </span>
         <div className="flex justify-between py-0.5">
           <span className="text-slate-500">Nama File:</span>
@@ -219,7 +221,7 @@ export function DocumentMetadataSideMenu({
           onClick={onStripAll}
           className="w-full rounded-lg border border-slate-300 bg-white py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 active:scale-98"
         >
-          Bersihkan Semua Metadata Dokumen
+          {t('docMeta.stripDoc')}
         </button>
 
         {hasChanges && (
@@ -228,7 +230,7 @@ export function DocumentMetadataSideMenu({
             onClick={onReset}
             className="w-full text-center text-[11px] font-medium text-indigo-600 hover:text-indigo-800 transition"
           >
-            Kembalikan ke Asli
+            {t('docMeta.resetDoc')}
           </button>
         )}
       </div>

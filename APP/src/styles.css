@@ -30,3 +30,21 @@ button,
 a {
   -webkit-tap-highlight-color: transparent;
 }
+
+@keyframes langMorphFade {
+  0% {
+    opacity: 0.35;
+    filter: blur(1px);
+    transform: translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0);
+  }
+}
+
+.animate-lang-shimmer {
+  animation: langMorphFade 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

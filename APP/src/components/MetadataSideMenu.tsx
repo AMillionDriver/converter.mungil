@@ -1,4 +1,5 @@
 import { useState, useEffect, type ChangeEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ExifData, ExifResult } from '../engines/image/exif-engine';
 
 const LOCATION_PRESETS = [
@@ -89,6 +90,7 @@ export function MetadataSideMenu({
   onStripAll,
   onReset,
 }: MetadataSideMenuProps) {
+  const { t } = useTranslation();
   const [latInput, setLatInput] = useState<string>(
     editedExif.GPSLatitude !== undefined ? String(editedExif.GPSLatitude) : ''
   );
@@ -382,12 +384,12 @@ export function MetadataSideMenu({
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
           <h2 className="text-sm font-bold tracking-tight text-slate-900">
-            Metadata & EXIF
+            {t('exif.title')}
           </h2>
         </div>
         {hasChanges && (
           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 border border-amber-200">
-            Ada Perubahan
+            {t('exif.hasChanges')}
           </span>
         )}
       </div>
@@ -395,10 +397,10 @@ export function MetadataSideMenu({
       {/* 1. Ringkasan File (Read-Only) */}
       <div className="space-y-1.5 text-xs">
         <span className="font-semibold uppercase tracking-wider text-slate-400 text-[10px]">
-          Informasi File
+          {t('exif.fileInfo')}
         </span>
         <div className="flex justify-between py-0.5">
-          <span className="text-slate-500">Resolusi:</span>
+          <span className="text-slate-500">{t('exif.resolution')}:</span>
           <span className="font-medium text-slate-800">
             {metadata.width && metadata.height
               ? `${metadata.width} × ${metadata.height} px`
@@ -406,13 +408,13 @@ export function MetadataSideMenu({
           </span>
         </div>
         <div className="flex justify-between py-0.5">
-          <span className="text-slate-500">Ukuran:</span>
+          <span className="text-slate-500">{t('exif.size')}:</span>
           <span className="font-medium text-slate-800">
             {(metadata.size / 1024 / 1024).toFixed(2)} MB
           </span>
         </div>
         <div className="flex justify-between py-0.5">
-          <span className="text-slate-500">Tipe MIME:</span>
+          <span className="text-slate-500">{t('exif.mime')}:</span>
           <span className="font-medium text-slate-800">{metadata.format}</span>
         </div>
       </div>
@@ -421,7 +423,7 @@ export function MetadataSideMenu({
       <div className="space-y-2.5 border-t border-slate-100 pt-3">
         <div className="flex items-center justify-between">
           <span className="font-semibold uppercase tracking-wider text-slate-400 text-[10px]">
-            Perangkat & Kamera
+            {t('exif.deviceCamera')}
           </span>
           {(editedExif.Make || editedExif.Model) && (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 border border-slate-200 truncate max-w-[130px]">
@@ -433,14 +435,14 @@ export function MetadataSideMenu({
         {/* Preset Perangkat Dropdown */}
         <div>
           <label className="block text-[10px] font-medium text-slate-600 mb-1">
-            Pilih Preset Perangkat
+            {t('exif.selectPreset')}
           </label>
           <select
             value={selectedDevicePreset}
             onChange={handleSelectDevicePreset}
             className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           >
-            <option value="">-- Pilih Preset Perangkat --</option>
+            <option value="">{t('exif.selectPreset')}</option>
             {DEVICE_PRESETS.map((device) => (
               <option key={device.label} value={device.label}>
                 {device.label}
@@ -844,7 +846,7 @@ export function MetadataSideMenu({
           onClick={onStripAll}
           className="w-full rounded-lg border border-slate-300 bg-white py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 active:scale-98"
         >
-          Bersihkan Semua Metadata
+          {t('exif.stripAll')}
         </button>
 
         {hasChanges && (
@@ -853,7 +855,7 @@ export function MetadataSideMenu({
             onClick={onReset}
             className="w-full text-center text-[11px] font-medium text-indigo-600 hover:text-indigo-800 transition"
           >
-            Kembalikan ke Asli
+            {t('exif.resetOriginal')}
           </button>
         )}
       </div>
