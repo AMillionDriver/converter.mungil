@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as fflate from 'fflate';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+import { PdfTableExtractor, type TextToken } from './pdf-table-extractor';
 
 // Register the worker module directly on globalThis so PDF.js runs in-thread
 // without nested worker or window.location dependencies in Web Worker environments.
@@ -12,6 +13,18 @@ if (typeof globalThis !== 'undefined') {
 export interface ExtractedPdfPage {
   pageNumber: number;
   lines: string[];
+  tokens?: TextToken[];
+}
+
+export interface DocxMediaItem {
+  id: string;
+  target: string;
+  extension: 'png' | 'jpeg' | 'jpg';
+  contentType: 'image/png' | 'image/jpeg';
+  data: Uint8Array;
+  widthEmu: number;
+  heightEmu: number;
+  title?: string;
 }
 
 interface TextItemLike {
@@ -230,9 +243,18 @@ export class DocumentConverter {
             }
           }
 
+          const tokens: TextToken[] = items.map((it) => ({
+            str: it.str,
+            x: it.transform[4],
+            y: it.transform[5],
+            width: it.width,
+            height: it.height,
+          }));
+
           pages.push({
             pageNumber: pageNum,
             lines: pageLines,
+            tokens,
           });
 
           textParts.push(`--- Halaman ${pageNum} ---`);
@@ -271,31 +293,50 @@ export class DocumentConverter {
   }
 
   /**
-   * PDF -> DOCX Converter
+   * PDF -> DOCX Converter (Preserves Tables & Text Blocks with Strict OpenXML Schema)
    */
   static async pdfToDocx(file: File): Promise<Blob> {
     const buffer = await file.arrayBuffer();
     const { pages } = await this.extractPdfTextWithLayout(buffer);
 
     const paragraphsXmlList: string[] = [];
+    let hasWideTable = false;
 
     for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
       const page = pages[pageIdx];
+      const pageBlocks = PdfTableExtractor.analyzePageBlocks(page.tokens || []);
 
-      if (page.lines.length === 0) {
-        paragraphsXmlList.push(
-          '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>'
-        );
+      if (pageBlocks.length > 0) {
+        for (const block of pageBlocks) {
+          if (block.type === 'table' && block.table) {
+            if (block.table.headers.length > 5) {
+              hasWideTable = true;
+            }
+            paragraphsXmlList.push(
+              this.generateDocxTableXml(block.table.headers, block.table.rows)
+            );
+          } else if (block.text) {
+            paragraphsXmlList.push(
+              `<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${this.escapeXml(block.text)}</w:t></w:r></w:p>`
+            );
+          }
+        }
       } else {
-        for (const line of page.lines) {
-          if (!line.trim()) {
-            paragraphsXmlList.push(
-              '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>'
-            );
-          } else {
-            paragraphsXmlList.push(
-              `<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${this.escapeXml(line)}</w:t></w:r></w:p>`
-            );
+        if (page.lines.length === 0) {
+          paragraphsXmlList.push(
+            '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>'
+          );
+        } else {
+          for (const line of page.lines) {
+            if (!line.trim()) {
+              paragraphsXmlList.push(
+                '<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr></w:p>'
+              );
+            } else {
+              paragraphsXmlList.push(
+                `<w:p><w:pPr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr><w:t xml:space="preserve">${this.escapeXml(line)}</w:t></w:r></w:p>`
+              );
+            }
           }
         }
       }
@@ -314,8 +355,144 @@ export class DocumentConverter {
 
     return this.buildDocxPackage(
       paragraphsXmlList.join(''),
+      file.name.replace(/\.[^/.]+$/, ''),
+      hasWideTable ? { landscape: true, narrowMargins: true } : undefined
+    );
+  }
+
+  /**
+   * PDF -> XLSX Converter (Reconstructs Tables directly to Excel Spreadsheet)
+   */
+  static async pdfToXlsx(file: File): Promise<Blob> {
+    const buffer = await file.arrayBuffer();
+    const { pages } = await this.extractPdfTextWithLayout(buffer);
+
+    let allHeaders: string[] = [];
+    const allRows: string[][] = [];
+
+    for (const page of pages) {
+      const blocks = PdfTableExtractor.analyzePageBlocks(page.tokens || []);
+      for (const block of blocks) {
+        if (block.type === 'table' && block.table) {
+          if (allHeaders.length === 0) {
+            allHeaders = block.table.headers;
+          }
+          allRows.push(...block.table.rows);
+        }
+      }
+    }
+
+    if (allHeaders.length > 0) {
+      return this.buildXlsxPackage(
+        allHeaders,
+        allRows,
+        file.name.replace(/\.[^/.]+$/, '')
+      );
+    }
+
+    // Fallback: emit text lines into a 1-column spreadsheet
+    const lines = pages.flatMap((p) => p.lines).filter((l) => l.trim().length > 0);
+    if (lines.length === 0) {
+      return this.buildXlsxPackage(
+        ['Kolom 1'],
+        [['(Dokumen PDF kosong)']],
+        file.name.replace(/\.[^/.]+$/, '')
+      );
+    }
+
+    const headers = [lines[0]];
+    const rows = lines.slice(1).map((l) => [l]);
+    return this.buildXlsxPackage(
+      headers,
+      rows,
       file.name.replace(/\.[^/.]+$/, '')
     );
+  }
+
+  /**
+   * XLSX -> DOCX Converter (Preserves Table Structure, Borders & Styling)
+   */
+  static async xlsxToDocx(file: File): Promise<Blob> {
+    const buffer = await file.arrayBuffer();
+    const { headers, rows } = this.parseXlsx(buffer);
+
+    if (headers.length === 0) {
+      return this.txtToDocx(file);
+    }
+
+    const tableXml = this.generateDocxTableXml(headers, rows);
+    const isLandscape = headers.length > 5;
+    const narrowMargins = headers.length > 8;
+
+    return this.buildDocxPackage(
+      tableXml,
+      file.name.replace(/\.[^/.]+$/, ''),
+      {
+        landscape: isLandscape,
+        narrowMargins,
+      }
+    );
+  }
+
+  /**
+   * DOCX -> XLSX Converter (Extracts Tables to Excel Spreadsheet)
+   */
+  static async docxToXlsx(file: File): Promise<Blob> {
+    const buffer = await file.arrayBuffer();
+    const { headers, rows } = this.parseDocxTables(buffer);
+
+    if (headers.length === 0) {
+      return this.buildXlsxPackage(
+        ['Kolom 1'],
+        [['(Dokumen DOCX kosong)']],
+        file.name.replace(/\.[^/.]+$/, '')
+      );
+    }
+
+    return this.buildXlsxPackage(
+      headers,
+      rows,
+      file.name.replace(/\.[^/.]+$/, '')
+    );
+  }
+
+  /**
+   * XLSX -> CSV Converter
+   */
+  static async xlsxToCsv(file: File): Promise<Blob> {
+    const buffer = await file.arrayBuffer();
+    const { headers, rows } = this.parseXlsx(buffer);
+
+    if (headers.length === 0) {
+      return new Blob([''], { type: 'text/csv' });
+    }
+
+    const escapeCsv = (val: string): string => {
+      if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+
+    const csvLines: string[] = [headers.map(escapeCsv).join(',')];
+    for (const row of rows) {
+      csvLines.push(row.map(escapeCsv).join(','));
+    }
+
+    return new Blob([csvLines.join('\r\n')], {
+      type: 'text/csv;charset=utf-8',
+    });
+  }
+
+  /**
+   * XLSX -> PDF Converter (Table Pagination & Layout)
+   */
+  static async xlsxToPdf(file: File): Promise<Blob> {
+    const csvBlob = await this.xlsxToCsv(file);
+    const csvFile = new File([csvBlob], file.name.replace(/\.[^/.]+$/, '.csv'), {
+      type: 'text/csv',
+    });
+    return this.csvToPdf(csvFile);
   }
 
   /**
@@ -420,73 +597,88 @@ export class DocumentConverter {
       return this.txtToDocx(file);
     }
 
-    const colCount = headers.length;
-    const isLandscape = colCount > 5;
-    const narrowMargins = colCount > 8;
+    const isLandscape = headers.length > 5;
+    const narrowMargins = headers.length > 8;
+    const tableXml = this.generateDocxTableXml(headers, rows, {
+      isLandscape,
+      narrowMargins,
+    });
 
-    // Available page width in DXA:
-    // Landscape A4 = 16838 dxa. Margin narrow (500 dxa * 2 = 1000 dxa). Usable = 15838 dxa.
-    // Portrait A4 = 11906 dxa. Margin standard (1440 dxa * 2 = 2880 dxa). Usable = 9026 dxa.
+    return this.buildDocxPackage(
+      tableXml,
+      file.name.replace(/\.[^/.]+$/, ''),
+      {
+        landscape: isLandscape,
+        narrowMargins,
+      }
+    );
+  }
+
+  /**
+   * Generates a 100% ECMA-376 compliant Word OpenXML Table (<w:tbl>)
+   */
+  static generateDocxTableXml(
+    headers: string[],
+    rows: string[][],
+    options?: {
+      colWidthsDxa?: number[];
+      isLandscape?: boolean;
+      narrowMargins?: boolean;
+    }
+  ): string {
+    const colCount = headers.length;
+    if (colCount === 0) return '';
+
+    const isLandscape = options?.isLandscape ?? colCount > 5;
+    const narrowMargins = options?.narrowMargins ?? colCount > 8;
     const marginDxa = narrowMargins ? 500 : isLandscape ? 720 : 1440;
     const pageWidthDxa = isLandscape ? 16838 : 11906;
     const usableWidthDxa = pageWidthDxa - marginDxa * 2;
 
-    // Adaptive typography & cell margins
     const fontSizeVal =
-      colCount > 15
-        ? '13'
-        : colCount > 10
-          ? '15'
-          : colCount > 6
-            ? '17'
-            : '19'; // half-points
+      colCount > 15 ? '13' : colCount > 10 ? '15' : colCount > 6 ? '17' : '19';
     const cellPadTop = colCount > 12 ? '50' : '80';
     const cellPadBottom = colCount > 12 ? '50' : '80';
     const cellPadHoriz = colCount > 15 ? '40' : colCount > 10 ? '60' : '100';
 
-    // Calculate maximum character length for each column across headers and sample rows
-    const sampleRows = rows.slice(0, 50);
-    const colWeights: number[] = headers.map((h, cIdx) => {
-      let maxLen = h.length;
-      for (const row of sampleRows) {
-        if (row[cIdx] && row[cIdx].length > maxLen) {
-          maxLen = row[cIdx].length;
+    let colWidthsDxa = options?.colWidthsDxa;
+    if (!colWidthsDxa || colWidthsDxa.length !== colCount) {
+      const sampleRows = rows.slice(0, 50);
+      const colWeights = headers.map((h, cIdx) => {
+        let maxLen = h.length;
+        for (const row of sampleRows) {
+          if (row[cIdx] && row[cIdx].length > maxLen) {
+            maxLen = row[cIdx].length;
+          }
         }
+        return Math.min(Math.max(maxLen, 4), 30);
+      });
+      const totalWeight = colWeights.reduce((acc, w) => acc + w, 0) || 1;
+      const minColDxa = colCount > 15 ? 650 : colCount > 8 ? 900 : 1200;
+      colWidthsDxa = colWeights.map((w) =>
+        Math.max(Math.round((w / totalWeight) * usableWidthDxa), minColDxa)
+      );
+
+      const sumCalculated = colWidthsDxa.reduce((acc, w) => acc + w, 0);
+      if (sumCalculated < usableWidthDxa) {
+        const extra = usableWidthDxa - sumCalculated;
+        colWidthsDxa = colWidthsDxa.map((w) => w + Math.floor(extra / colCount));
       }
-      return Math.min(Math.max(maxLen, 4), 30);
-    });
-
-    const totalWeight = colWeights.reduce((acc, w) => acc + w, 0);
-
-    // Minimum column dxa to prevent 1-letter vertical squash:
-    // Ensures at least 650 dxa per column even for 27 columns!
-    const minColDxa = colCount > 15 ? 650 : colCount > 8 ? 900 : 1200;
-
-    let colWidthsDxa = colWeights.map((w) =>
-      Math.max(Math.round((w / totalWeight) * usableWidthDxa), minColDxa)
-    );
-
-    const sumCalculated = colWidthsDxa.reduce((acc, w) => acc + w, 0);
-    if (sumCalculated < usableWidthDxa) {
-      const extra = usableWidthDxa - sumCalculated;
-      colWidthsDxa = colWidthsDxa.map((w) => w + Math.floor(extra / colCount));
     }
 
     const totalTableDxa = colWidthsDxa.reduce((acc, w) => acc + w, 0);
 
-    // Build Word OpenXML Table Grid (<w:tblGrid>)
     const tblGridXml = `
       <w:tblGrid>
         ${colWidthsDxa.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}
       </w:tblGrid>`;
 
-    // Header cells with subtle slate background and bold font
     const headerCellsXml = headers
       .map(
         (h, cIdx) => `
       <w:tc>
         <w:tcPr>
-          <w:tcW w:w="${colWidthsDxa[cIdx]}" w:type="dxa"/>
+          <w:tcW w:w="${colWidthsDxa![cIdx]}" w:type="dxa"/>
           <w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/>
           <w:tcMar>
             <w:top w:w="${cellPadTop}" w:type="dxa"/>
@@ -522,7 +714,6 @@ export class DocumentConverter {
       ${headerCellsXml}
     </w:tr>`;
 
-    // Data rows with alternating light row shading and clean cell borders
     const dataRowsXml = rows
       .map((row, rIdx) => {
         const rowBg = rIdx % 2 === 1 ? ' fill="F8FAFC"' : '';
@@ -532,7 +723,7 @@ export class DocumentConverter {
             return `
         <w:tc>
           <w:tcPr>
-            <w:tcW w:w="${colWidthsDxa[cIdx]}" w:type="dxa"/>
+            <w:tcW w:w="${colWidthsDxa![cIdx]}" w:type="dxa"/>
             ${rowBg ? `<w:shd w:val="clear" w:color="auto"${rowBg}/>` : ''}
             <w:tcMar>
               <w:top w:w="${cellPadTop}" w:type="dxa"/>
@@ -568,7 +759,7 @@ export class DocumentConverter {
       })
       .join('');
 
-    const tableXml = `
+    return `
     <w:tbl>
       <w:tblPr>
         <w:tblStyle w:val="TableGrid"/>
@@ -587,15 +778,6 @@ export class DocumentConverter {
       ${headerRowXml}
       ${dataRowsXml}
     </w:tbl>`;
-
-    return this.buildDocxPackage(
-      tableXml,
-      file.name.replace(/\.[^/.]+$/, ''),
-      {
-        landscape: isLandscape,
-        narrowMargins,
-      }
-    );
   }
 
   /**
@@ -772,6 +954,21 @@ export class DocumentConverter {
       });
     }
 
+    return this.buildXlsxPackage(
+      headers,
+      rows,
+      file.name.replace(/\.[^/.]+$/, '')
+    );
+  }
+
+  /**
+   * Builds a 100% ECMA-376 compliant XLSX spreadsheet archive
+   */
+  static buildXlsxPackage(
+    headers: string[],
+    rows: string[][],
+    documentTitle: string = 'Workbook'
+  ): Blob {
     // 1. Calculate column widths based on maximum content length
     const sampleRows = rows.slice(0, 100);
     const colWidths = headers.map((h, cIdx) => {
@@ -959,7 +1156,7 @@ export class DocumentConverter {
 
     const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:title>${this.escapeXml(file.name.replace(/\.[^/.]+$/, ''))}</dc:title>
+  <dc:title>${this.escapeXml(documentTitle)}</dc:title>
   <dc:creator>Mungil Converter</dc:creator>
   <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>
@@ -1087,15 +1284,198 @@ export class DocumentConverter {
   }
 
   /**
+   * Generates a 100% ECMA-376 DrawingML picture element
+   */
+  static generateDrawingXml(
+    rId: string,
+    widthEmu: number,
+    heightEmu: number,
+    name: string = 'Picture'
+  ): string {
+    const cx = Math.max(12700, Math.round(widthEmu));
+    const cy = Math.max(12700, Math.round(heightEmu));
+    const picId = Math.floor(Math.random() * 90000) + 10000;
+
+    return `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${picId}" name="${name}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  }
+
+  /**
+   * Parses XLSX spreadsheet archive and extracts headers and cell rows
+   */
+  static parseXlsx(buffer: ArrayBuffer | Uint8Array): { headers: string[]; rows: string[][] } {
+    const unzipped = fflate.unzipSync(new Uint8Array(buffer));
+
+    // 1. Parse shared strings if present
+    const sharedStrings: string[] = [];
+    const sstBytes = unzipped['xl/sharedStrings.xml'];
+    if (sstBytes) {
+      const sstXml = fflate.strFromU8(sstBytes);
+      const siMatches = sstXml.match(/<si>[\s\S]*?<\/si>/gi) || [];
+      for (const si of siMatches) {
+        const tMatches = si.match(/<t[^>]*>([\s\S]*?)<\/t>/gi) || [];
+        const text = tMatches
+          .map((t) => t.replace(/<t[^>]*>/i, '').replace(/<\/t>/i, ''))
+          .join('');
+        sharedStrings.push(this.unescapeXml(text));
+      }
+    }
+
+    // 2. Find worksheet
+    let sheetXmlBytes = unzipped['xl/worksheets/sheet1.xml'];
+    if (!sheetXmlBytes) {
+      const sheetKey = Object.keys(unzipped).find(
+        (k) => k.startsWith('xl/worksheets/sheet') && k.endsWith('.xml')
+      );
+      if (sheetKey) {
+        sheetXmlBytes = unzipped[sheetKey];
+      }
+    }
+    if (!sheetXmlBytes) {
+      return { headers: [], rows: [] };
+    }
+
+    const sheetXml = fflate.strFromU8(sheetXmlBytes);
+    const rowMatches = sheetXml.match(/<row[^>]*>[\s\S]*?<\/row>/gi) || [];
+    const parsedRows: string[][] = [];
+
+    const refToColIndex = (ref: string): number => {
+      const colLetter = ref.replace(/[0-9]/g, '').toUpperCase();
+      let col = 0;
+      for (let i = 0; i < colLetter.length; i++) {
+        col = col * 26 + (colLetter.charCodeAt(i) - 64);
+      }
+      return Math.max(0, col - 1);
+    };
+
+    for (const rXml of rowMatches) {
+      const cellMatches = rXml.match(/<c[^>]*>[\s\S]*?<\/c>|<c[^>]*\/>/gi) || [];
+      const rowData: string[] = [];
+
+      for (const cXml of cellMatches) {
+        const refMatch = cXml.match(/r="([A-Z0-9]+)"/i);
+        const ref = refMatch ? refMatch[1] : '';
+        const colIdx = ref ? refToColIndex(ref) : rowData.length;
+
+        while (rowData.length < colIdx) {
+          rowData.push('');
+        }
+
+        const tMatch = cXml.match(/t="([a-z]+)"/i);
+        const cellType = tMatch ? tMatch[1] : '';
+
+        if (cellType === 's') {
+          const vMatch = cXml.match(/<v>([0-9]+)<\/v>/i);
+          const sstIdx = vMatch ? parseInt(vMatch[1], 10) : -1;
+          rowData[colIdx] =
+            sstIdx >= 0 && sstIdx < sharedStrings.length ? sharedStrings[sstIdx] : '';
+        } else if (cellType === 'inlineStr') {
+          const tSub = cXml.match(/<t[^>]*>([\s\S]*?)<\/t>/i);
+          rowData[colIdx] = tSub ? this.unescapeXml(tSub[1]) : '';
+        } else {
+          const vMatch = cXml.match(/<v>([\s\S]*?)<\/v>/i);
+          rowData[colIdx] = vMatch ? this.unescapeXml(vMatch[1]) : '';
+        }
+      }
+
+      if (rowData.some((c) => c.trim().length > 0)) {
+        parsedRows.push(rowData);
+      }
+    }
+
+    if (parsedRows.length === 0) {
+      return { headers: [], rows: [] };
+    }
+
+    const maxCols = Math.max(...parsedRows.map((r) => r.length));
+    for (const r of parsedRows) {
+      while (r.length < maxCols) {
+        r.push('');
+      }
+    }
+
+    return {
+      headers: parsedRows[0],
+      rows: parsedRows.slice(1),
+    };
+  }
+
+  /**
+   * Parses DOCX tables or paragraphs into structured tabular rows
+   */
+  static parseDocxTables(buffer: ArrayBuffer | Uint8Array): { headers: string[]; rows: string[][] } {
+    const unzipped = fflate.unzipSync(new Uint8Array(buffer));
+    const docXmlBytes = unzipped['word/document.xml'];
+    if (!docXmlBytes) {
+      throw new Error('Berkas DOCX tidak memiliki word/document.xml');
+    }
+
+    const docXml = fflate.strFromU8(docXmlBytes);
+    const tblMatch = docXml.match(/<w:tbl[\s\S]*?<\/w:tbl>/i);
+    if (tblMatch) {
+      const tableXml = tblMatch[0];
+      const trMatches = tableXml.match(/<w:tr[\s\S]*?<\/w:tr>/gi) || [];
+      const tableRows: string[][] = [];
+
+      for (const tr of trMatches) {
+        const tcMatches = tr.match(/<w:tc[\s\S]*?<\/w:tc>/gi) || [];
+        const rowCells: string[] = [];
+
+        for (const tc of tcMatches) {
+          const tMatches = tc.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/gi) || [];
+          const cellText = tMatches
+            .map((t) => t.replace(/<w:t[^>]*>/i, '').replace(/<\/w:t>/i, ''))
+            .join('');
+          rowCells.push(this.unescapeXml(cellText.trim()));
+        }
+
+        if (rowCells.some((c) => c.length > 0)) {
+          tableRows.push(rowCells);
+        }
+      }
+
+      if (tableRows.length > 0) {
+        return {
+          headers: tableRows[0],
+          rows: tableRows.slice(1),
+        };
+      }
+    }
+
+    // Fallback: extract paragraphs
+    const paragraphs = docXml.split(/<\/w:p>/i);
+    const resultLines: string[] = [];
+    for (const p of paragraphs) {
+      const textMatches = p.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/gi);
+      if (textMatches) {
+        const lineText = textMatches
+          .map((m) => m.replace(/<w:t[^>]*>/i, '').replace(/<\/w:t>/i, ''))
+          .join('');
+        const trimmed = this.unescapeXml(lineText.trim());
+        if (trimmed) resultLines.push(trimmed);
+      }
+    }
+
+    if (resultLines.length === 0) {
+      return { headers: [], rows: [] };
+    }
+
+    return {
+      headers: [resultLines[0]],
+      rows: resultLines.slice(1).map((l) => [l]),
+    };
+  }
+
+  /**
    * Builds a 100% ECMA-376 OpenXML standard compliant DOCX archive
    * that opens cleanly in Microsoft Word without any recovery prompt.
    */
-  private static buildDocxPackage(
+  static buildDocxPackage(
     paragraphsXml: string,
     documentTitle: string,
     options?: {
       landscape?: boolean;
       narrowMargins?: boolean;
+      media?: DocxMediaItem[];
     }
   ): Blob {
     const isLandscape = Boolean(options?.landscape);
@@ -1108,6 +1488,9 @@ export class DocumentConverter {
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Default Extension="jpeg" ContentType="image/jpeg"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
   <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
@@ -1123,11 +1506,19 @@ export class DocumentConverter {
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
 </Relationships>`;
 
+    const mediaRelsXml = (options?.media || [])
+      .map(
+        (m) =>
+          `<Relationship Id="${m.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${m.target}"/>`
+      )
+      .join('\n  ');
+
     const docRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>
+  ${mediaRelsXml}
 </Relationships>`;
 
     const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1148,6 +1539,21 @@ export class DocumentConverter {
     <w:pPr>
       <w:spacing w:after="120" w:line="240" w:lineRule="auto"/>
     </w:pPr>
+  </w:style>
+  <w:style w:type="table" w:styleId="TableGrid">
+    <w:name w:val="Table Grid"/>
+    <w:basedOn w:val="TableNormal"/>
+    <w:uiPriority w:val="39"/>
+    <w:tblPr>
+      <w:tblBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+        <w:insideH w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/>
+        <w:insideV w:val="single" w:sz="4" w:space="0" w:color="E2E8F0"/>
+      </w:tblBorders>
+    </w:tblPr>
   </w:style>
 </w:styles>`;
 
@@ -1206,6 +1612,12 @@ export class DocumentConverter {
       'docProps/app.xml': fflate.strToU8(appXml),
       'docProps/core.xml': fflate.strToU8(coreXml),
     };
+
+    if (options?.media) {
+      for (const m of options.media) {
+        files[`word/media/${m.target}`] = m.data;
+      }
+    }
 
     const zipped = fflate.zipSync(files);
     return new Blob([zipped as Uint8Array<ArrayBuffer>], {

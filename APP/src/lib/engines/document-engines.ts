@@ -66,6 +66,36 @@ export const docxToPdfEngine = {
   },
 };
 
+export const pdfToXlsxEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.pdfToXlsx(file);
+  },
+};
+
+export const xlsxToDocxEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.xlsxToDocx(file);
+  },
+};
+
+export const docxToXlsxEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.docxToXlsx(file);
+  },
+};
+
+export const xlsxToCsvEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.xlsxToCsv(file);
+  },
+};
+
+export const xlsxToPdfEngine = {
+  runConversion: async (file: File): Promise<Blob> => {
+    return DocumentConverter.xlsxToPdf(file);
+  },
+};
+
 export const identityEngine = {
   runConversion: async (file: File): Promise<Blob> => {
     const buffer = await file.arrayBuffer();
