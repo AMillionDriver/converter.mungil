@@ -35,7 +35,7 @@ export function MetadataDiffModal({
       aria-labelledby="diff-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs transition-opacity"
     >
-      <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-slate-200 transition-all">
+      <div className="relative w-full max-w-lg rounded-2xl bg-white p-4 sm:p-6 shadow-xl border border-slate-200 transition-all">
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-slate-100">
           <div>
@@ -129,18 +129,18 @@ export function MetadataDiffModal({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-2.5 sm:gap-3 pt-2">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-95"
+            className="w-full sm:w-auto text-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-95"
           >
             {t('diffModal.cancel')}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-lg bg-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700 active:scale-95"
+            className="w-full sm:w-auto text-center justify-center rounded-lg bg-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700 active:scale-95"
           >
             {t('diffModal.confirm')}
           </button>

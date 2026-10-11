@@ -620,7 +620,7 @@ export function PdfPageManagerModal({
           </div>
 
           {/* Right batch actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {selectedCount > 0 ? (
               <>
                 <button
@@ -1029,7 +1029,7 @@ export function PdfPageManagerModal({
         </main>
 
         {/* Footer Actions */}
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
+        <footer className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-3.5 py-3 sm:px-6">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             {isProcessing ? (
               <span className="font-medium text-indigo-600 animate-pulse">
@@ -1043,14 +1043,14 @@ export function PdfPageManagerModal({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 justify-end w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 justify-end w-full sm:w-auto">
             {/* Split / Extract button if pages are selected */}
             {selectedCount > 0 && selectedCount < pages.length && (
               <button
                 type="button"
                 disabled={isProcessing}
                 onClick={() => handleApplyChanges(true)}
-                className="rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition active:scale-95 shadow-xs"
+                className="w-full sm:w-auto text-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition active:scale-95 shadow-xs"
                 title="Gunakan hanya halaman terpilih ini di antrean konverter"
               >
                 Gunakan {selectedCount} Halaman Saja (Ekstrak ke Konverter)
@@ -1066,7 +1066,7 @@ export function PdfPageManagerModal({
                   selectedCount > 0 && selectedCount < pages.length
                 )
               }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition active:scale-95 shadow-xs"
+              className="w-full sm:w-auto text-center justify-center inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition active:scale-95 shadow-xs"
               title={
                 selectedCount > 0 && selectedCount < pages.length
                   ? `Pecah dan unduh ${selectedCount} halaman terpilih sebagai file PDF terpisah dalam format ZIP`
@@ -1097,7 +1097,7 @@ export function PdfPageManagerModal({
               type="button"
               disabled={isProcessing}
               onClick={() => handleDownload(false)}
-              className="rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition active:scale-95 shadow-xs"
+              className="w-full sm:w-auto text-center justify-center rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition active:scale-95 shadow-xs"
               title="Unduh dokumen lengkap sebagai satu file PDF"
             >
               Unduh Langsung (PDF)
@@ -1107,7 +1107,7 @@ export function PdfPageManagerModal({
               type="button"
               disabled={isProcessing || pages.length === 0}
               onClick={() => handleApplyChanges(false)}
-              className="rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition active:scale-95 shadow-xs disabled:opacity-50"
+              className="w-full sm:w-auto text-center justify-center rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition active:scale-95 shadow-xs disabled:opacity-50"
             >
               Terapkan Perubahan
             </button>

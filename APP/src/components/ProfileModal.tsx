@@ -77,7 +77,7 @@ export function ProfileModal({
       <div className="relative flex flex-col w-full max-w-xl max-h-[85vh] rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/90 px-5 py-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
               <svg
                 className="size-5"
@@ -93,11 +93,11 @@ export function ProfileModal({
                 />
               </svg>
             </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
+            <div className="min-w-0 pr-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                 Profil Perangkat & Kapasitas Memori
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 truncate">
                 Informasi arsitektur lokal, alokasi memori, dan status cache.
               </p>
             </div>

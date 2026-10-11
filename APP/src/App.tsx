@@ -722,7 +722,12 @@ function Dropzone({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-4 sm:p-8
+        group relative overflow-hidden rounded-2xl border-2 border-dashed
+        ${
+          batchResults && batchResults.length > 0
+            ? 'p-2 sm:p-5 cursor-default'
+            : 'p-4 sm:p-8 cursor-pointer'
+        }
         transition-all duration-200 ease-in-out
         ${
           isDragging
@@ -761,7 +766,7 @@ function Dropzone({
       />
 
       {batchResults && batchResults.length > 0 ? (
-        <div className="relative z-10 w-full py-2">
+        <div className="relative z-10 w-full py-1 sm:py-2">
           <BatchResultView
             results={batchResults}
             onReset={() => {
@@ -842,7 +847,7 @@ function Dropzone({
                       key={`${f.name}-${i}`}
                       className="flex flex-col sm:flex-row sm:items-center justify-between py-2 px-2.5 hover:bg-white rounded-lg transition gap-2"
                     >
-                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                      <div className="flex items-center gap-2 min-w-0 pr-2 w-full sm:flex-1">
                         <span className="rounded bg-slate-200/80 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-700 shrink-0">
                           {ext}
                         </span>
@@ -2232,7 +2237,7 @@ function App() {
             {/* Kolom Tengah - Core Tool */}
             <section
               aria-labelledby="tool-title"
-              className="w-full max-w-3xl mx-auto"
+              className="w-full max-w-3xl mx-auto min-w-0"
             >
               <h1
                 className="mb-4 sm:mb-6 text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900"
