@@ -214,157 +214,186 @@ function Dropzone({
     files: FileList | null,
     append: boolean = false
   ) => {
-    if (!files || files.length === 0) return;
+    try {
+      if (!files || files.length === 0) return;
 
-    const fileList = Array.from(files);
-    const config = {
-      maxSizeMB: 1024,
-      allowedMimeTypes: [
-        'application/pdf',
-        'image/png',
-        'image/jpeg',
-        'image/webp',
-        'image/bmp',
-        'image/x-ms-bmp',
-        'image/x-bmp',
-        'image/x-icon',
-        'image/vnd.microsoft.icon',
-        'image/gif',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'text/plain',
-        'text/csv',
-        'application/json',
-        'application/vnd.ms-excel',
-      ],
-      allowedExtensions: [
-        'pdf',
-        'png',
-        'jpg',
-        'jpeg',
-        'webp',
-        'bmp',
-        'ico',
-        'gif',
-        'docx',
-        'txt',
-        'csv',
-        'json',
-      ],
-    };
+      let fileList = Array.from(files);
+      const MAX_BATCH_FILES = 10;
+      const currentCount = append ? uploadedFiles.length : 0;
+      const remainingQuota = MAX_BATCH_FILES - currentCount;
 
-    const sanitizedFiles: File[] = [];
-    for (const f of fileList) {
-      let currentFile = f;
-      const ext = f.name.split('.').pop()?.toLowerCase() || '';
-
-      if (['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext)) {
+      if (remainingQuota <= 0) {
         alert(
-          `Format video (.${ext}) sedang dalam tahap optimalisasi WebAssembly dan dinonaktifkan pada versi ini untuk menjaga stabilitas memori browser. Silakan pilih dokumen (PDF, Word, CSV, TXT, JSON) atau gambar (PNG, JPG, WebP, BMP, ICO).`
+          `Batas maksimal ${MAX_BATCH_FILES} berkas sudah tercapai. Hapus beberapa berkas untuk menambahkan berkas baru.`
         );
-        continue;
+        return;
       }
-      if (ext === 'bmp') {
-        try {
-          const headerSlice = await f.slice(0, 2).arrayBuffer();
-          const bytes = new Uint8Array(headerSlice);
-          if (bytes[0] === 0x4d && bytes[1] === 0x42) {
-            // Auto-heal inverted legacy header ("MB" -> "BM")
-            const repairedBlob = new Blob(
-              [new Uint8Array([0x42, 0x4d]), f.slice(2)],
-              { type: 'image/bmp' }
-            );
-            currentFile = new File([repairedBlob], f.name, {
-              type: 'image/bmp',
-              lastModified: f.lastModified,
-            });
-          } else if (f.type !== 'image/bmp') {
-            currentFile = new File([f], f.name, {
-              type: 'image/bmp',
-              lastModified: f.lastModified,
-            });
+
+      if (fileList.length > remainingQuota) {
+        alert(
+          `Maksimal ${MAX_BATCH_FILES} berkas sekaligus. ${remainingQuota} berkas pertama telah dipilih.`
+        );
+        fileList = fileList.slice(0, remainingQuota);
+      }
+
+      const config = {
+        maxSizeMB: 1024,
+        allowedMimeTypes: [
+          'application/pdf',
+          'image/png',
+          'image/jpeg',
+          'image/webp',
+          'image/bmp',
+          'image/x-ms-bmp',
+          'image/x-bmp',
+          'image/x-icon',
+          'image/vnd.microsoft.icon',
+          'image/gif',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/plain',
+          'text/csv',
+          'application/json',
+          'application/vnd.ms-excel',
+        ],
+        allowedExtensions: [
+          'pdf',
+          'png',
+          'jpg',
+          'jpeg',
+          'webp',
+          'bmp',
+          'ico',
+          'gif',
+          'docx',
+          'xlsx',
+          'txt',
+          'csv',
+          'json',
+        ],
+      };
+
+      const sanitizedFiles: File[] = [];
+      for (const f of fileList) {
+        let currentFile = f;
+        const ext = f.name.split('.').pop()?.toLowerCase() || '';
+
+        if (['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext)) {
+          alert(
+            `Format video (.${ext}) sedang dalam tahap optimalisasi WebAssembly dan dinonaktifkan pada versi ini untuk menjaga stabilitas memori browser. Silakan pilih dokumen (PDF, Word, Excel, CSV, TXT, JSON) atau gambar (PNG, JPG, WebP, BMP, ICO).`
+          );
+          continue;
+        }
+        if (ext === 'bmp') {
+          try {
+            const headerSlice = await f.slice(0, 2).arrayBuffer();
+            const bytes = new Uint8Array(headerSlice);
+            if (bytes[0] === 0x4d && bytes[1] === 0x42) {
+              // Auto-heal inverted legacy header ("MB" -> "BM")
+              const repairedBlob = new Blob(
+                [new Uint8Array([0x42, 0x4d]), f.slice(2)],
+                { type: 'image/bmp' }
+              );
+              currentFile = new File([repairedBlob], f.name, {
+                type: 'image/bmp',
+                lastModified: f.lastModified,
+              });
+            } else if (f.type !== 'image/bmp') {
+              currentFile = new File([f], f.name, {
+                type: 'image/bmp',
+                lastModified: f.lastModified,
+              });
+            }
+          } catch {
+            // Keep original file if slice fails
           }
-        } catch {
-          // Keep original file if slice fails
+        }
+        sanitizedFiles.push(currentFile);
+      }
+
+      const validFiles: File[] = [];
+      for (const f of sanitizedFiles) {
+        const result = await FileValidator.validate(f, config);
+        if (!result.isValid) {
+          alert(`Berkas tidak valid (${f.name}): ${result.error}`);
+        } else {
+          validFiles.push(f);
         }
       }
-      sanitizedFiles.push(currentFile);
-    }
 
-    for (const f of sanitizedFiles) {
-      const result = await FileValidator.validate(f, config);
-      if (!result.isValid) {
-        alert(`Invalid file (${f.name}): ${result.error}`);
+      if (validFiles.length === 0) return;
+
+      const nextFiles = append ? [...uploadedFiles, ...validFiles] : validFiles;
+      setUploadedFiles(nextFiles);
+      setBatchResults(null);
+
+      const allPdfs = nextFiles.every((f) =>
+        f.name.toLowerCase().endsWith('.pdf')
+      );
+      if (allPdfs && nextFiles.length > 1) {
+        setAvailableFormats(['merge', 'docx', 'txt']);
+        setSelectedFormat('merge');
         return;
       }
-    }
 
-    const nextFiles = append
-      ? [...uploadedFiles, ...sanitizedFiles]
-      : sanitizedFiles;
-    setUploadedFiles(nextFiles);
-    setBatchResults(null);
-
-    const allPdfs = nextFiles.every((f) =>
-      f.name.toLowerCase().endsWith('.pdf')
-    );
-    if (allPdfs && nextFiles.length > 1) {
-      setAvailableFormats(['merge', 'docx', 'txt']);
-      setSelectedFormat('merge');
-      return;
-    }
-
-    if (nextFiles.length === 1) {
-      const ext = nextFiles[0].name.split('.').pop()?.toLowerCase() || '';
-      const allOutputs = engineRegistry.getSupportedOutputFormats(ext);
-      // Place cross-formats first, but keep current format available so users can modify metadata on same format
-      const crossFormats = allOutputs.filter(
-        (f) =>
-          f !== ext &&
-          !(ext === 'jpg' && f === 'jpeg') &&
-          !(ext === 'jpeg' && f === 'jpg')
-      );
-      const formats = crossFormats.length > 0 ? crossFormats : allOutputs;
-      if (formats.length === 0) {
-        alert(`No conversion options available for .${ext} files`);
-        setUploadedFiles([]);
-        return;
-      }
-      setAvailableFormats(formats);
-      setSelectedFormat(formats[0]);
-    } else {
-      // Multiple files: calculate intersection of supported formats
-      const exts = nextFiles.map(
-        (f) => f.name.split('.').pop()?.toLowerCase() || ''
-      );
-      const allImages = exts.every((e) =>
-        ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico'].includes(e)
-      );
-
-      // Find formats that ALL uploaded files can convert to
-      const firstOutputs = engineRegistry.getSupportedOutputFormats(exts[0]);
-      const common = firstOutputs.filter((outFmt) =>
-        exts.every((e) =>
-          engineRegistry.getSupportedOutputFormats(e).includes(outFmt)
-        )
-      );
-
-      if (allImages) {
-        const imageCommon = ['webp', 'jpg', 'png', 'ico'].filter(
-          (fmt) => common.includes(fmt) || ['webp', 'jpg', 'png'].includes(fmt)
+      if (nextFiles.length === 1) {
+        const ext = nextFiles[0].name.split('.').pop()?.toLowerCase() || '';
+        const allOutputs = engineRegistry.getSupportedOutputFormats(ext);
+        // Place cross-formats first, but keep current format available so users can modify metadata on same format
+        const crossFormats = allOutputs.filter(
+          (f) =>
+            f !== ext &&
+            !(ext === 'jpg' && f === 'jpeg') &&
+            !(ext === 'jpeg' && f === 'jpg')
         );
-        const combined = [...new Set([...imageCommon, 'pdf'])];
-        setAvailableFormats(combined);
-        setSelectedFormat(combined[0] || 'webp');
-      } else if (common.length > 0) {
-        setAvailableFormats(common);
-        setSelectedFormat(common[0]);
+        const formats = crossFormats.length > 0 ? crossFormats : allOutputs;
+        if (formats.length === 0) {
+          alert(`Belum ada opsi konversi untuk berkas .${ext}`);
+          setUploadedFiles([]);
+          return;
+        }
+        setAvailableFormats(formats);
+        setSelectedFormat(formats[0]);
       } else {
-        alert(
-          'File yang dipilih tidak memiliki format konversi bersama yang kompatibel.'
+        // Multiple files: calculate intersection of supported formats
+        const exts = nextFiles.map(
+          (f) => f.name.split('.').pop()?.toLowerCase() || ''
         );
-        setUploadedFiles([]);
-        return;
+        const allImages = exts.every((e) =>
+          ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico'].includes(e)
+        );
+
+        // Find formats that ALL uploaded files can convert to
+        const firstOutputs = engineRegistry.getSupportedOutputFormats(exts[0]);
+        const common = firstOutputs.filter((outFmt) =>
+          exts.every((e) =>
+            engineRegistry.getSupportedOutputFormats(e).includes(outFmt)
+          )
+        );
+
+        if (allImages) {
+          const imageCommon = ['webp', 'jpg', 'png', 'ico'].filter(
+            (fmt) =>
+              common.includes(fmt) || ['webp', 'jpg', 'png'].includes(fmt)
+          );
+          const combined = [...new Set([...imageCommon, 'pdf'])];
+          setAvailableFormats(combined);
+          setSelectedFormat(combined[0] || 'webp');
+        } else if (common.length > 0) {
+          setAvailableFormats(common);
+          setSelectedFormat(common[0]);
+        } else {
+          // If files do not share a common target format (e.g. mixed doc/image/sheet),
+          // retain the uploaded files so user can see them, and offer individual conversion or notice
+          setAvailableFormats([]);
+          setSelectedFormat('');
+          alert(
+            'Berkas yang dipilih berasal dari format yang berbeda dan tidak memiliki format tujuan bersama. Anda dapat menghapus salah satu jenis berkas untuk melakukan konversi batch seragam.'
+          );
+        }
       }
+    } catch (err) {
+      console.error('[handleFiles] Gagal memproses berkas:', err);
     }
   };
 
@@ -755,6 +784,9 @@ function Dropzone({
         multiple
         ref={fileInputRef}
         className="hidden"
+        onClick={(e) => {
+          (e.currentTarget as HTMLInputElement).value = '';
+        }}
         onChange={(e) => handleFiles(e.target.files)}
       />
       <input
@@ -762,6 +794,9 @@ function Dropzone({
         multiple
         ref={addMoreInputRef}
         className="hidden"
+        onClick={(e) => {
+          (e.currentTarget as HTMLInputElement).value = '';
+        }}
         onChange={(e) => handleFiles(e.target.files, true)}
       />
 
@@ -790,6 +825,7 @@ function Dropzone({
           </div>
           <div className="mb-6">
             <button
+              type="button"
               disabled={isBusy}
               onClick={() => fileInputRef.current?.click()}
               className={`rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-indigo-700 hover:shadow-md active:scale-95 ${
