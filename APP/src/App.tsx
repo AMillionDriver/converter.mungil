@@ -801,6 +801,10 @@ function Dropzone({
             <p className="mt-3 text-sm text-slate-500">
               {t('dropzone.dragPrompt')} {t('dropzone.limitsNotice')}
             </p>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Tips Ponsel: Tekan dan tahan (<em>long-press</em>) berkas pertama
+              untuk memilih banyak file sekaligus
+            </p>
           </div>
         </div>
       ) : (
@@ -1233,6 +1237,28 @@ function Dropzone({
                 <span className="text-xs text-slate-500 font-medium">
                   {(uploadedFiles[0].size / 1024 / 1024).toFixed(2)} MB
                 </span>
+
+                <button
+                  type="button"
+                  onClick={() => addMoreInputRef.current?.click()}
+                  className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition active:scale-95 border border-indigo-200 shadow-2xs"
+                  title="Pilih dan tambahkan file lain ke antrean"
+                >
+                  <svg
+                    className="size-3 text-indigo-600"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 4.5v15m7.5-7.5h-15"
+                    />
+                  </svg>
+                  <span>+ Tambah File</span>
+                </button>
 
                 <button
                   type="button"
