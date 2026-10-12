@@ -506,6 +506,7 @@ function Dropzone({
         for (let i = 0; i < total; i++) {
           const file = uploadedFiles[i];
           const extension = file.name.split('.').pop()?.toLowerCase() || '';
+          const targetFormat = selectedFormat.toLowerCase();
           setBatchProgress({
             current: i + 1,
             total,
@@ -514,7 +515,7 @@ function Dropzone({
 
           const engine = await ConversionPipeline.resolveAndLoad(
             extension,
-            selectedFormat
+            targetFormat
           );
 
           const options: Record<string, unknown> = {};

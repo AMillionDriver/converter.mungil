@@ -32,43 +32,70 @@ export class StorageManager {
   static async setEngineInstalled(
     metadata: EngineMetadataRecord
   ): Promise<void> {
-    const dbPromise = this.getDb();
-    if (!dbPromise) {
-      this.memoryStore.set(metadata.id, metadata);
-      return;
+    if (!metadata || !metadata.id) return;
+    this.memoryStore.set(metadata.id, metadata);
+
+    try {
+      const dbPromise = this.getDb();
+      if (!dbPromise) return;
+      const db = await dbPromise;
+      await db.put(StorageManager.STORE_NAME, metadata);
+    } catch (err) {
+      console.warn(
+        '[StorageManager] Gagal menyimpan metadata ke IndexedDB:',
+        err
+      );
     }
-    const db = await dbPromise;
-    await db.put(StorageManager.STORE_NAME, metadata);
   }
 
   static async getEngineMetadata(
-    id: string
+    id?: string | null
   ): Promise<EngineMetadataRecord | undefined> {
-    const dbPromise = this.getDb();
-    if (!dbPromise) {
+    if (!id || typeof id !== 'string') {
+      return undefined;
+    }
+
+    try {
+      const dbPromise = this.getDb();
+      if (!dbPromise) {
+        return this.memoryStore.get(id);
+      }
+      const db = await dbPromise;
+      const record = await db.get(StorageManager.STORE_NAME, id);
+      return record || this.memoryStore.get(id);
+    } catch (err) {
+      console.warn(
+        `[StorageManager] Gagal membaca metadata engine '${id}':`,
+        err
+      );
       return this.memoryStore.get(id);
     }
-    const db = await dbPromise;
-    return await db.get(StorageManager.STORE_NAME, id);
   }
 
-  static async removeEngine(id: string): Promise<void> {
-    const dbPromise = this.getDb();
-    if (!dbPromise) {
-      this.memoryStore.delete(id);
-      return;
+  static async removeEngine(id?: string | null): Promise<void> {
+    if (!id || typeof id !== 'string') return;
+    this.memoryStore.delete(id);
+
+    try {
+      const dbPromise = this.getDb();
+      if (!dbPromise) return;
+      const db = await dbPromise;
+      await db.delete(StorageManager.STORE_NAME, id);
+    } catch (err) {
+      console.warn(`[StorageManager] Gagal menghapus engine '${id}':`, err);
     }
-    const db = await dbPromise;
-    await db.delete(StorageManager.STORE_NAME, id);
   }
 
   static async clearAll(): Promise<void> {
-    const dbPromise = this.getDb();
-    if (!dbPromise) {
-      this.memoryStore.clear();
-      return;
+    this.memoryStore.clear();
+
+    try {
+      const dbPromise = this.getDb();
+      if (!dbPromise) return;
+      const db = await dbPromise;
+      await db.clear(StorageManager.STORE_NAME);
+    } catch (err) {
+      console.warn('[StorageManager] Gagal mengosongkan store:', err);
     }
-    const db = await dbPromise;
-    await db.clear(StorageManager.STORE_NAME);
   }
 }
